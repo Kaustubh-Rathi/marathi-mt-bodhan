@@ -180,6 +180,9 @@ def build_trainer(
         # None = keep ALL checkpoints; each is mirrored off the VM.
         save_total_limit=t.get("save_total_limit", None),
         save_only_model=bool(t.get("save_only_model", False)),
+        load_best_model_at_end=bool(t.get("load_best_model_at_end", False)),
+        metric_for_best_model=t.get("metric_for_best_model"),
+        greater_is_better=t.get("greater_is_better"),
         evaluation_strategy=eval_strategy_value,
         eval_steps=int(t.get("eval_steps", 500)),
         logging_steps=int(t.get("logging_steps", 10)),
@@ -307,39 +310,11 @@ def main(argv=None) -> None:
 
     max_len = int(cfg["training"].get("max_seq_length", 256))
 
-    # 2. Tokenized length stats on ~200 train rows before training.
-    sample_rows = train_rows[:200]
-    src_lengths = []
-    tgt_lengths = []
-    for row in sample_rows:
-        src_text = processor.preprocess_batch(
-            [row["src"]],
-            src_lang=row.get("src_lang") or cfg["data"]["source_lang"],
-            tgt_lang=row.get("tgt_lang") or cfg["data"]["target_lang"],
-        )[0]
-        src_tok = tokenizer(src_text, truncation=False, add_special_tokens=False)
-        tgt_tok = tokenizer(str(row["tgt"]), truncation=False, add_special_tokens=False)
-        src_lengths.append(len(src_tok["input_ids"]))
-        tgt_lengths.append(len(tgt_tok["input_ids"]))
-
-    def _pctile(vals, p):
-        if not vals:
-            return 0
-        vals_sorted = sorted(vals)
-        idx = int(len(vals_sorted) * p / 100)
-        return vals_sorted[min(idx, len(vals_sorted) - 1)]
-
-    for name, lengths in (("src", src_lengths), ("tgt", tgt_lengths)):
-        p50 = _pctile(lengths, 50)
-        p95 = _pctile(lengths, 95)
-        p99 = _pctile(lengths, 99)
-        mx = max(lengths) if lengths else 0
-        exceed = sum(1 for L in lengths if L > max_len)
-        frac = exceed / len(lengths) if lengths else 0.0
-        print(
-            f"[token-len] {name}: p50={p50} p95={p95} p99={p99} max={mx} "
-            f"exceeding_max_seq_len({max_len})={exceed}/{len(lengths)} ({frac:.1%})"
-        )
+    # Do not call the bare tokenizer for pre-training length statistics. The
+    # IndicTrans2 remote tokenizer requires IndicDataCollator to attach source/
+    # target metadata; direct calls can misinterpret normalized text as a
+    # language tag. The collator below is the only valid training tokenization
+    # path, and its max_length truncation comes from training config.
 
     def tokenize_batch(batch: dict) -> dict:
         """Batched Indic normalize + tokenize (one preprocess call per lang group).
