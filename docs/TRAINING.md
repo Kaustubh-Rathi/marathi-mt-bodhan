@@ -1,9 +1,10 @@
 # TRAINING
 
 Sessions: **A** = Bodhan 8B QLoRA (Acct1, primary) · **B** = IndicTrans2
-indic-indic-dist-320M LoRA (Acct2, fallback) · **C** = ablation/demo (Acct3). Config: `configs/base.yaml`
+en-indic-dist-200M LoRA (Acct2) · **C** = ablation/demo (Acct3). Config: `configs/base.yaml`
 (session configs inherit via `mr_mt.config.load_session_config` and override `run.name`,
-`output_dir`, `hub.repo_id`).
+`output_dir`, `hub.repo_id`). All sessions train `eng_Latn->mar_Deva` on
+`ai4bharat/samanantar` (config `mr`); eval is IN22-Gen (test) + FLORES (devtest).
 
 ## Session A — Bodhan 8B QLoRA (primary)
 
@@ -17,7 +18,7 @@ make train-a
 - Hub push every 100 steps (`hub.strategy: all_checkpoints`) when `push_to_hub: true`
   with the session's `hub.repo_id`.
 
-## Session B — IndicTrans2 indic-indic-dist-320M LoRA (fallback)
+## Session B — IndicTrans2 en-indic-dist-200M LoRA
 
 Use the **Session B env** (`transformers<5` + IndicTransToolkit — see `docs/SETUP.md`).
 
@@ -26,10 +27,10 @@ make train-b
 # = PYTHONPATH=src python -m mr_mt.train_indictrans2_lora --config configs/sessionB_indictrans2_lora.yaml
 ```
 
-- Base model `ai4bharat/indictrans2-indic-indic-dist-320M` (the
-  en-indic-dist-200M checkpoint cannot accept Hindi source).
+- Base model `ai4bharat/indictrans2-en-indic-dist-200M` (gated `auto` — accept
+  its conditions once with the `HF_TOKEN` account before running).
 - `SEQ_2_SEQ_LM` LoRA on `q_proj,k_proj`; `attn_implementation="eager"`;
-  `num_workers=0`; direction `hin_Deva->mar_Deva`.
+  `num_workers=0`; direction `eng_Latn->mar_Deva`.
 
 ## Session C — ablation / demo
 

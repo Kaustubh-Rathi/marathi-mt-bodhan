@@ -117,6 +117,13 @@ def _find_rclone_conf() -> Optional[str]:
     ]
     input_root = Path("/kaggle/input")
     if input_root.is_dir():
+        # Real mount layout nests datasets under ``datasets/<owner>/<slug>/``
+        # (e.g. ``/kaggle/input/datasets/kaustubhcrathi/gdrive-creds/``), which
+        # the bare ``/kaggle/input/<slug>/`` candidates above miss.
+        datasets_root = input_root / "datasets"
+        if datasets_root.is_dir():
+            for slug in ("gdrive-creds", "rclone-creds"):
+                candidates += sorted(datasets_root.glob(f"*/{slug}/rclone.conf"))
         candidates += sorted(input_root.rglob("rclone.conf"))
     for cand in candidates:
         if cand.is_file():

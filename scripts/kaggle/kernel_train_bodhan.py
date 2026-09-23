@@ -28,6 +28,7 @@ REPO_URL = os.environ.get(
 if not (Path(REPO) / "scripts" / "kaggle" / "kaggle_env.py").is_file():
     subprocess.run(["git", "clone", "--depth", "1", REPO_URL, REPO], check=True)
 
+sys.path.insert(0, str(Path(REPO) / "src"))
 sys.path.insert(0, str(Path(REPO) / "scripts" / "kaggle"))
 import kaggle_env  # noqa: E402
 

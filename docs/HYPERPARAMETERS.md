@@ -8,9 +8,11 @@ YAML. To change anything below, edit the YAML, never the code.
 ## Session A — Bodhan Gemma-4 (8B) QLoRA (primary)
 
 Provenance: the combination is mirrored from a recipe already proven on **this
-exact model + data domain + dependency stack** (transformers 5.13.1 / trl 1.6.0
+exact model + dependency stack** (transformers 5.13.1 / trl 1.6.0
 / peft 0.20.0 on a Kaggle T4; 8/10 runs converged, COMET ≈ 74.5 reference). We
-change only what the assignment forces (Marathi target, Education_v2 data).
+change only what the assignment forces (Marathi target, Samanantar en→mr data —
+the preferred education-domain set, `coild-aikosh/Education_v2`, was
+manual-gated and access was denied).
 
 | Knob (config path) | Value | Why this value | When/how to shift |
 | --- | --- | --- | --- |
@@ -33,13 +35,13 @@ change only what the assignment forces (Marathi target, Education_v2 data).
 | `assistant_only_loss: true` | on | Loss on Marathi answer tokens only — the prompt is an instruction; training on it wastes capacity and teaches prompt-echoing. Needs `{% generation %}` template markers (fallback documented in `_load_chat_dataset`). | Fixed. |
 | `weight_decay: 0.01`, `max_grad_norm: 1.0`, `seed: 42` | defaults | HF-standard, proven; shared seed for cross-session comparability. | Fixed. |
 
-## Session B — IndicTrans2 indic-indic-dist-320M LoRA (fallback)
+## Session B — IndicTrans2 en-indic-dist-200M LoRA
 
 | Knob | Value | Why |
 | --- | --- | --- |
-| `model.name` | indictrans2-indic-indic-dist-320M | The en-indic checkpoint CANNOT encode Hindi source (English-source only) — indic-indic is mandatory for hin→mar. |
-| `lora.r:16/alpha:32/dropout:0.1`, targets `q_proj,k_proj` | small | 320M seq2seq needs far less adapter capacity than 8B; q/k-only mirrors known-good IndicTrans2 LoRA fine-tunes; heavier dropout suits the small model. |
-| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 320M. Session B config sets `warmup_steps: 1000` and `warmup_ratio: 0` (explicit step warmup, not the base 0.03 ratio). |
+| `model.name` | indictrans2-en-indic-dist-200M | En-Indic distilled checkpoint (200M): native English source → Marathi, matching the `eng_Latn->mar_Deva` Samanantar train direction. Gated `auto` — one-time accept. |
+| `lora.r:16/alpha:32/dropout:0.1`, targets `q_proj,k_proj` | small | 200M seq2seq needs far less adapter capacity than 8B; q/k-only mirrors known-good IndicTrans2 LoRA fine-tunes; heavier dropout suits the small model. |
+| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 200M. Session B config sets `warmup_steps: 1000` and `warmup_ratio: 0` (explicit step warmup, not the base 0.03 ratio). |
 | `max_seq_length: 256` | 256 | Sentence-level MT; IndicTrans2 convention. |
 | `per_device 8 × accum 16` (eff 128) | 128 | Standard NMT token-batch equivalent for stable seq2seq gradients. |
 | `max_steps: 3000`, save/eval 500 | — | 3000 × 128 ≈ 48 passes over 8k — small model, needs many epochs; small checkpoints, so 500-step cadence is cheap. |

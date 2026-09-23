@@ -1,4 +1,4 @@
-"""Single-sentence inference for Marathi MT fine-tunes (hi->mr).
+"""Single-sentence inference for Marathi MT fine-tunes (en->mr).
 
 Model loaders are reused from :mod:`mr_mt.evaluate` to avoid duplication;
 this module only adds the one-string :func:`translate` wrapper and a CLI.
@@ -22,10 +22,10 @@ def translate(
     cfg: dict,
     family: str = "bodhan",
 ) -> str:
-    """Translate one Hindi string to Marathi.
+    """Translate one English string to Marathi.
 
     Args:
-        text: Source (Hindi) string.
+        text: Source (English) string.
         model: Loaded model for the requested family.
         tokenizer: For ``family="bodhan"`` the ``AutoProcessor``; for
             ``family="indictrans2"`` the ``(hf_tokenizer, indic_processor)``
@@ -42,10 +42,10 @@ def translate(
 
 def main(argv: Optional[list] = None) -> str:
     """CLI: ``--config --adapter --text --family``; prints the translation."""
-    parser = argparse.ArgumentParser(description="Translate one Hindi sentence.")
+    parser = argparse.ArgumentParser(description="Translate one English sentence.")
     parser.add_argument("--config", required=True, help="Path to YAML config.")
     parser.add_argument("--adapter", default="", help="PEFT adapter path or HF id.")
-    parser.add_argument("--text", required=True, help="Hindi source sentence.")
+    parser.add_argument("--text", required=True, help="English source sentence.")
     parser.add_argument("--family", default="bodhan", choices=["bodhan", "indictrans2"])
     args = parser.parse_args(argv)
 

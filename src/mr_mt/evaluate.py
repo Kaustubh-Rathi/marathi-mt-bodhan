@@ -1,4 +1,4 @@
-"""Evaluation for Marathi MT fine-tunes (hi->mr).
+"""Evaluation for Marathi MT fine-tunes (en->mr).
 
 Supports two model families via the ``family`` flag:
 
@@ -14,9 +14,10 @@ Supports two model families via the ``family`` flag:
     ``postprocess_batch`` after generation.
 
 Benchmarks come from ``cfg["eval"]["benchmarks"]`` (list of
-``{name, dataset, config, split, src_lang, tgt_lang}``). Session A uses
-``ai4bharat/IN22-Gen`` (``hin_Deva-mar_Deva`` / ``gen``) and
-``facebook/flores`` (``hin_Deva-mar_Deva`` / ``devtest``).
+``{name, dataset, config, split, src_lang, tgt_lang}``). Both sessions use
+``ai4bharat/IN22-Gen`` (config null/``default``, split ``test``) and
+``facebook/flores`` (config ``eng_Latn-mar_Deva``, split ``devtest``),
+direction ``eng_Latn->mar_Deva`` throughout.
 
 Metrics are sacreBLEU BLEU and chrF++ (sacrebleu, default tokenization;
 signatures are printed).
@@ -58,9 +59,9 @@ def _prompt_for_src(src: str, cfg: dict) -> str:
     data = cfg.get("data", {})
     return template.format(
         src=src,
-        src_lang_name=data.get("source_lang_name", "Hindi"),
+        src_lang_name=data.get("source_lang_name", "English"),
         tgt_lang_name=data.get("target_lang_name", "Marathi"),
-        src_lang=data.get("source_lang", "hin_Deva"),
+        src_lang=data.get("source_lang", "eng_Latn"),
         tgt_lang=data.get("target_lang", "mar_Deva"),
     )
 
@@ -172,7 +173,7 @@ def load_indictrans2_model(cfg: dict, adapter: str = ""):
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
     model_cfg = cfg.get("model", {})
-    base = model_cfg.get("name", "ai4bharat/indictrans2-indic-indic-dist-320M")
+    base = model_cfg.get("name", "ai4bharat/indictrans2-en-indic-dist-200M")
     token = get_hf_token(required=[("models", base)])
 
     try:
@@ -290,10 +291,14 @@ def _generate_indictrans2(
     bundle,
     src_texts: List[str],
     cfg: dict,
-    src_lang: str = "hin_Deva",
+    src_lang: str = "eng_Latn",
     tgt_lang: str = "mar_Deva",
 ) -> List[str]:
-    """Generation for the IndicTrans2 encoder-decoder family."""
+    """Generation for the IndicTrans2 encoder-decoder family.
+
+    Defaults mirror ``configs/base.yaml`` (``eng_Latn->mar_Deva``); the
+    :func:`translate_batch` wrapper always passes the cfg values explicitly.
+    """
     import torch
 
     eval_cfg = cfg.get("eval", {})
@@ -349,7 +354,7 @@ def translate_batch(
             tokenizer,
             srcs,
             cfg,
-            src_lang=data.get("source_lang", "hin_Deva"),
+            src_lang=data.get("source_lang", "eng_Latn"),
             tgt_lang=data.get("target_lang", "mar_Deva"),
         )
     raise ValueError(f"Unknown family {family!r}; expected 'bodhan' or 'indictrans2'.")
@@ -401,19 +406,42 @@ except Exception:  # pragma: no cover - fallback when data package unavailable
         """Fallback extract (src, ref) from a benchmark row.
 
         Mirrors ``mr_mt.data.download._extract_pair``; the canonical
-        implementation lives there.
+        implementation lives there. Handles IN22-Gen ``default``-config rows
+        (``sentence_eng_Latn`` / ``sentence_mar_Deva``) and
+        ``facebook/flores`` pairing-config rows (same ``sentence_<lang>``
+        convention, or a ``translation`` mapping).
         """
-        if "src" in example and "tgt" in example:
-            return str(example["src"]), str(example["tgt"])
-        if "source" in example and "target" in example:
-            return str(example["source"]), str(example["target"])
-        s_key, t_key = f"sentence_{src_lang}", f"sentence_{tgt_lang}"
-        if s_key in example and t_key in example:
-            return str(example[s_key]), str(example[t_key])
-        if "translation" in example and isinstance(example["translation"], dict):
-            tr = example["translation"]
-            if src_lang in tr and tgt_lang in tr:
-                return str(tr[src_lang]), str(tr[tgt_lang])
+        src_keys = [
+            f"sentence_{src_lang}",
+            src_lang,
+            "source_sentence",
+            "source_string",
+            "source",
+            "src",
+            "input",
+            "text",
+        ]
+        tgt_keys = [
+            f"sentence_{tgt_lang}",
+            tgt_lang,
+            "target_sentence",
+            "target_string",
+            "target",
+            "tgt",
+            "output",
+        ]
+        trans = example.get("translation")
+        if isinstance(trans, dict) and (src_lang in trans or tgt_lang in trans):
+            src = trans.get(src_lang, "")
+            tgt = trans.get(tgt_lang, "")
+            if src and tgt:
+                return str(src), str(tgt)
+        for key in src_keys:
+            if example.get(key):
+                src = str(example[key])
+                for tkey in tgt_keys:
+                    if example.get(tkey):
+                        return src, str(example[tkey])
         raise KeyError(
             f"Cannot extract src/ref for {src_lang}->{tgt_lang} from keys "
             f"{sorted(example.keys())}"

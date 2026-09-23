@@ -1,16 +1,23 @@
-# Marathi MT via Bodhan Fine-Tune (Hindi → Marathi, Education Domain)
+# Marathi MT via Bodhan Fine-Tune (English → Marathi)
 
 AI4Bharat / AI Research Engineer take-home: pick **one** Bodhan model, fine-tune it for **Marathi**,
 and deliver an end-to-end run with clean code, honest docs, and reproducible artifacts.
 
 - **Primary:** [`bodhan-ai/indic-translate`](https://huggingface.co/bodhan-ai/indic-translate)
   (Gemma-4 E4B, 8B, gated) fine-tuned with QLoRA.
-- **Fallback:** [`ai4bharat/indictrans2-indic-indic-dist-320M`](https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M)
-  (MIT) + IndicTransToolkit, direction `hin_Deva → mar_Deva`.
-- **Train:** [`coild-aikosh/Education_v2`](https://huggingface.co/datasets/coild-aikosh/Education_v2)
-  HIN–MAR (education-domain, CC-BY-4.0).
+- **Session B:** [`ai4bharat/indictrans2-en-indic-dist-200M`](https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M)
+  (gated `auto`; accept once) + IndicTransToolkit, direction `eng_Latn → mar_Deva`.
+- **Train:** [`ai4bharat/samanantar`](https://huggingface.co/datasets/ai4bharat/samanantar)
+  config `mr` (OPEN, English→Marathi, CC-BY-NC-4.0).
 - **Eval (held out, never trained on):** [`ai4bharat/IN22-Gen`](https://huggingface.co/datasets/ai4bharat/IN22-Gen)
-  (hin_Deva → mar_Deva test split) + [`facebook/flores`](https://huggingface.co/datasets/facebook/flores) devtest.
+  (config null/`default`, split test) + [`facebook/flores`](https://huggingface.co/datasets/facebook/flores)
+  (config `eng_Latn-mar_Deva`, split devtest), direction `eng_Latn → mar_Deva`.
+
+> **Dataset pivot:** the preferred not-in-training education-domain set
+> (`coild-aikosh/Education_v2`) is manual-gated and access was denied, so
+> training pivoted to the OPEN `samanantar` (`mr`) set. Note Samanantar (via
+> BPCC) WAS used in IndicTrans2 pretraining, so Session B scores partly
+> re-measure memorization.
 
 > **Scoring note (per assignment brief):** NOT scored on metrics; scored on end-to-end run,
 > code structure, and effort/judgement/problem-solving. The graded narrative lives in
@@ -34,7 +41,7 @@ marathi-mt-bodhan/
 │   ├── compat.py              # supported_kwargs: keyword/version compat for the two transformers stacks
 │   ├── data/                  # download.py, prepare.py, decontaminate.py
 │   ├── train_bodhan_qlora.py  # Session A (primary, 8B QLoRA)
-│   ├── train_indictrans2_lora.py  # Session B (fallback, 320M LoRA)
+│   ├── train_indictrans2_lora.py  # Session B (en-indic-dist-200M LoRA)
 │   ├── evaluate.py            # IN22-Gen + FLORES scoring -> metrics.json
 │   ├── inference.py           # single-string translate CLI
 │   ├── demo.py                # fixed-sentence demo + optional hosted-API comparison
@@ -73,7 +80,7 @@ make train-a
 
 - `make data` builds `data/processed/{train,dev,test}.jsonl` from `configs/base.yaml`.
 - `make train-a` runs the primary Bodhan 8B QLoRA fine-tune (Session A).
-- `make demo` prints Marathi translations for the built-in Hindi sentence set
+- `make demo` prints Marathi translations for the built-in English sentence set
   (adds a Bodhan hosted-API comparison when `BODHAN_API_KEY`/`BODHAN_API_URL` are set).
 - See [docs/SETUP.md](docs/SETUP.md) before anything gated, and
   [docs/TRAINING.md](docs/TRAINING.md) for sessions B/C, resume, and monitoring.
@@ -89,7 +96,7 @@ make train-a
 | `training.max_seq_length` | 1024 | Education sentences fit; keeps 8B QLoRA on T4/P100 |
 | `training` batch | per-device 1 × accum 16 | Effective batch 16 on a single Kaggle GPU |
 | `training.save_steps / eval_steps` | 100 / 100 | Resume-friendly cadence for 12h Kaggle sessions |
-| `data.direction` | `hin_Deva->mar_Deva` | Hindi → Marathi |
+| `data.direction` | `eng_Latn->mar_Deva` | English → Marathi |
 | `prepare.max_train / max_dev` | 8000 / 1000 | Bounded run for 30h/week Kaggle budget |
 | `eval` decoding | 256 new tokens, beam 5 | IN22-Gen/FLORES scoring config |
 | `report_to` | `tensorboard` | Deliberate: TB + CSV, no MLflow server / W&B (see APPROACH.md §2) |
@@ -141,10 +148,10 @@ See [scripts/kaggle/README.md](scripts/kaggle/README.md) for the full flow.
 | -------- | ---- | ---------------- |
 | Primary model `bodhan-ai/indic-translate` | https://huggingface.co/bodhan-ai/indic-translate | Gated; Indic Open Model License v1.0 (share-alike) |
 | Base weights `google/gemma-4-E4B-it` | https://huggingface.co/google/gemma-4-E4B-it | Gated (accept license) |
-| Fallback `ai4bharat/indictrans2-indic-indic-dist-320M` | https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M | MIT |
-| Train `coild-aikosh/Education_v2` (HIN–MAR) | https://huggingface.co/datasets/coild-aikosh/Education_v2 | Gated; CC-BY-4.0 |
-| Eval `ai4bharat/IN22-Gen` | https://huggingface.co/datasets/ai4bharat/IN22-Gen | Gated (accept license) |
-| Eval `facebook/flores` devtest | https://huggingface.co/datasets/facebook/flores | Gated (accept license) |
+| Session B `ai4bharat/indictrans2-en-indic-dist-200M` | https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M | Gated `auto` (one-time accept) |
+| Train `ai4bharat/samanantar` (config `mr`, en→mr) | https://huggingface.co/datasets/ai4bharat/samanantar | OPEN; CC-BY-NC-4.0 |
+| Eval `ai4bharat/IN22-Gen` (config null, split test) | https://huggingface.co/datasets/ai4bharat/IN22-Gen | Accept license |
+| Eval `facebook/flores` (config `eng_Latn-mar_Deva`, split devtest) | https://huggingface.co/datasets/facebook/flores | Already accessible (accept conditions if prompted) |
 | Session artifacts (Drive) | `gdrive:mr-mt-edu-2026/{bodhan-qlora,indictrans2-lora,eval}` — share URL: <!-- TODO: paste Drive link after runs --> | All checkpoints + `metrics.json` |
 
 ## License / attribution

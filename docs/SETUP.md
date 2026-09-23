@@ -7,13 +7,15 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
 
 1. Create a token at https://huggingface.co/settings/tokens (read role is enough to
    download; write role only if pushing checkpoints to the Hub).
-2. Accept each gated license while logged in:
-   - `coild-aikosh/Education_v2` — https://huggingface.co/datasets/coild-aikosh/Education_v2
-   - `ai4bharat/IN22-Gen` — https://huggingface.co/datasets/ai4bharat/IN22-Gen
-   - `facebook/flores` — https://huggingface.co/datasets/facebook/flores (gated; accept conditions)
+2. One-time gated acceptances (while logged in with the `HF_TOKEN` account):
+   - `ai4bharat/samanantar` (train, config `mr`) — OPEN, no acceptance needed.
+   - `ai4bharat/IN22-Gen` — https://huggingface.co/datasets/ai4bharat/IN22-Gen (accept license)
+   - `facebook/flores` — https://huggingface.co/datasets/facebook/flores (already accessible; accept conditions if prompted)
    - `bodhan-ai/indic-translate` — https://huggingface.co/bodhan-ai/indic-translate
    - `google/gemma-4-E4B-it` — https://huggingface.co/google/gemma-4-E4B-it
-   - `ai4bharat/indictrans2-indic-indic-dist-320M` — https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M (gated; Session B fallback)
+   - `ai4bharat/indictrans2-en-indic-dist-200M` — https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M (gated `auto`; Session B — accept its conditions once)
+   - Rejected: `coild-aikosh/Education_v2` was the preferred not-in-training
+     education set, but it is manual-gated and access was denied — NOT used.
 3. Local login:
    ```bash
    copy .env.example .env
@@ -82,12 +84,14 @@ python scripts/kaggle/kaggle_env.py --check-access bodhan        # or indictrans
 Exit 0 = all probes OK. `BLOCKED` = a definite 401/403, i.e. either the token is
 invalid/expired (check <https://huggingface.co/settings/tokens> — `whoami` must
 succeed) or the account was never granted access (open the repo page and accept
-the licence; **`coild-aikosh/Education_v2` is a MANUAL gate** that needs the
-owner's approval, so it can take hours). `unknown` is inconclusive, not a
+the licence — e.g. `ai4bharat/indictrans2-en-indic-dist-200M` is a gated
+`auto` repo that needs a one-time accept). `unknown` is inconclusive, not a
 failure. Kernels run the same probe at startup — before the pip install — print
 an `ACTION REQUIRED` block naming the repos that failed, and **abort
 (`SystemExit`) immediately** when a repo is definitely blocked or no token
 candidate exists; set the Secret `MR_MT_TOKEN_PROBE=0` to bypass.
+(Historical note: `coild-aikosh/Education_v2` was a MANUAL gate whose approval
+could take hours — access was denied, so it is no longer probed or used.)
 To verify a rotation *per Kaggle account* (Secret included — invisible locally),
 push the CPU-only probe kernel: `push_kernel.ps1 -Task probe|probe2|probe3`
 (acct1/2/3), then read `kaggle kernels logs <slug>` for `whoami=OK as <user>`.
@@ -112,7 +116,7 @@ Pins (see `requirements.txt`): `transformers==5.13.1`, `trl==1.6.0`, `peft==0.20
 `sentencepiece`, `sacrebleu`, `huggingface_hub`, `PyYAML`, `pandas`, `matplotlib`,
 `tensorboard`.
 
-**Session B (IndicTrans2 indic-indic-dist-320M fallback)** — separate env; IndicTransToolkit conflicts
+**Session B (IndicTrans2 en-indic-dist-200M)** — separate env; IndicTransToolkit conflicts
 with `transformers>=5`:
 
 ```bash
@@ -136,4 +140,4 @@ pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacreble
 | Either | 12h/session cap — rely on save-every-100 + Hub resume, not on finishing in one go |
 
 Verify GPU before launching: `nvidia-smi` (in the run script, or via `kaggle kernels logs`) and confirm dtype flags match
-the card. Session B (indic-indic-dist-320M) runs fine on either card.
+the card. Session B (en-indic-dist-200M, 200M params) runs fine on either card.

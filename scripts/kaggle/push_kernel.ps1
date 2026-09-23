@@ -91,6 +91,8 @@ if ($DryRun) {
   return
 }
 
+if (-not (Get-Command kaggle -ErrorAction SilentlyContinue)) { throw "kaggle CLI not found on PATH (pip install kaggle); cannot push kernel" }
+
 # The CLI reads the token from KAGGLE_API_TOKEN (per-account files, never committed).
 $env:KAGGLE_API_TOKEN = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
 try {
@@ -106,6 +108,15 @@ try {
   if ($match.Success) { $slug = $match.Groups[1].Value.TrimEnd('.') }
   if ($slug -ne $meta.id) {
     Write-Output "note        : kernel slug is '$slug' (title-derived), not metadata id '$($meta.id)'"
+  }
+  # The metadata owner was validated pre-push, but the CLI may be
+  # authenticated as a DIFFERENT user (e.g. a stale legacy kaggle.json, which
+  # outranks nothing and KAGGLE_API_TOKEN only the new CLI honours). A kernel
+  # pushed under the wrong account cannot see this task's private datasets and
+  # fails late and confusingly, so abort here instead of tailing it.
+  $slugOwner = ($slug -split "/")[0]
+  if ($slugOwner -ne $acctUser) {
+    throw "pushed kernel owner '$slugOwner' does not match -Acct $Acct account '$acctUser' (slug '$slug'); the kaggle CLI authenticated as the wrong user - check $tokenFile / KAGGLE_API_TOKEN"
   }
   kaggle kernels status $slug
   Write-Output "logs        : kaggle kernels logs $slug"

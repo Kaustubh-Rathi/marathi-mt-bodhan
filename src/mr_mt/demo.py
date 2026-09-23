@@ -1,4 +1,4 @@
-"""Demo translations for the hi->mr fine-tunes (fixed sentence set + optional hosted API).
+"""Demo translations for the en->mr fine-tunes (fixed sentence set + optional hosted API).
 
 Model loading and generation are reused from :mod:`mr_mt.evaluate` and
 :mod:`mr_mt.inference`, so this module only orchestrates a demo sentence set
@@ -30,13 +30,13 @@ from mr_mt.evaluate import load_model_for_family
 from mr_mt.inference import translate
 from mr_mt.secrets import get_env_secret
 
-# Education / general-domain Hindi sentences exercising different phenomena
+# Education / general-domain English sentences exercising different phenomena
 # (declarative, copula, imperative with a loanword, progressive aspect).
 DEMO_SENTENCES: List[str] = [
-    "शिक्षा हर बच्चे का अधिकार है।",
-    "महाराष्ट्र की राजधानी मुंबई है।",
-    "कृपया मुझे पुस्तकालय का रास्ता बताइए।",
-    "किसान खेत में धान की फसल काट रहे हैं।",
+    "Education is the right of every child.",
+    "The capital of Maharashtra is Mumbai.",
+    "Please tell me the way to the library.",
+    "Farmers are harvesting the paddy crop in the field.",
 ]
 
 
@@ -44,7 +44,7 @@ def hosted_translate(
     sentence: str,
     api_url: str,
     api_key: str,
-    src_lang: str = "hin_Deva",
+    src_lang: str = "eng_Latn",
     tgt_lang: str = "mar_Deva",
     timeout: int = 60,
 ) -> Optional[str]:
@@ -73,18 +73,18 @@ def hosted_translate(
 
 
 def main(argv: Optional[list] = None) -> Dict[str, list]:
-    """CLI: ``--config --adapter --family [--sentences]``; prints HI/MR pairs."""
-    parser = argparse.ArgumentParser(description="Demo hi->mr translations.")
-    parser.add_argument("--config", required=True, help="Path to a session YAML config.")
-    parser.add_argument("--adapter", default="", help="PEFT adapter path or HF id.")
+    """CLI: ``--config --adapter --family [--sentences]``; prints EN/MR pairs."""
+    parser = argparse.ArgumentParser(description="Demo en->mr translations.")
     parser.add_argument(
-        "--family", default="bodhan", choices=["bodhan", "indictrans2"]
+        "--config", required=True, help="Path to a session YAML config."
     )
+    parser.add_argument("--adapter", default="", help="PEFT adapter path or HF id.")
+    parser.add_argument("--family", default="bodhan", choices=["bodhan", "indictrans2"])
     parser.add_argument(
         "--sentences",
         nargs="*",
         default=None,
-        help="Override the built-in demo sentences (Hindi text).",
+        help="Override the built-in demo sentences (English text).",
     )
     args = parser.parse_args(argv)
 
@@ -97,13 +97,15 @@ def main(argv: Optional[list] = None) -> Dict[str, list]:
     api_url = get_env_secret("BODHAN_API_URL") or ""
     use_hosted = bool(api_key and api_url)
     if not use_hosted:
-        print("[demo] BODHAN_API_KEY/BODHAN_API_URL not set — hosted comparison skipped.")
+        print(
+            "[demo] BODHAN_API_KEY/BODHAN_API_URL not set — hosted comparison skipped."
+        )
 
     rows: List[dict] = []
     for sentence in sentences:
         local = translate(sentence, model, tokenizer, cfg, args.family)
         row = {"src": sentence, "local": local}
-        print("HI:", sentence)
+        print("EN:", sentence)
         print("MR:", local)
         if use_hosted:
             hosted = hosted_translate(sentence, api_url, api_key)

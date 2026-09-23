@@ -20,7 +20,7 @@
 
 | Option | Pros | Cons | Verdict |
 | ------ | ---- | ---- | ------- |
-| `ai4bharat/indictrans2-indic-indic-dist-320M` (MIT, 320M) | Trains anywhere incl. T4; mature IndicTransToolkit; supports hin_Deva source directly | Capacity ceiling on education-domain fluency; still needs LoRA harness | **Fallback (Session B)** — guarantees a complete end-to-end story whatever happens on A |
+| `ai4bharat/indictrans2-en-indic-dist-200M` (gated `auto`, 200M) | Trains anywhere incl. T4; mature IndicTransToolkit; native `eng_Latn` source matches the Samanantar en→mr train direction | Capacity ceiling on fluency; Samanantar WAS in IndicTrans2 pretraining (scores partly re-measure memorization); needs a one-time gated accept | **Session B** — guarantees a complete end-to-end story whatever happens on A |
 | `bodhan-ai/indic-translate` (Gemma-4 E4B, 8B, gated) | Assignment-aligned (Bodhan pick); strongest Marathi prior; instruction-tuned chat template | 8B needs 4-bit QLoRA + careful Gemma-4 handling; gated + share-alike license | **Primary (Session A)** — where the effort goes |
 
 ### 2b. Fine-tune stack: Unsloth vs TRL+PEFT vs Axolotl
@@ -42,8 +42,8 @@
 ### 2d. Compute: single vs multi-account Kaggle
 
 - Single account = 30h/week, one failure kills the story.
-- **Chosen: 3 sessions/accounts** — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2-320M fallback
-  (Acct2), C = ablation/demo (Acct3). Each keeps every checkpoint (every 100 steps) and
+- **Chosen: 3 sessions/accounts** — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2
+  en-indic-dist-200M (Acct2), C = ablation/demo (Acct3). Each keeps every checkpoint (every 100 steps) and
   syncs them to Drive, so a 12h
   session timeout costs at most one checkpoint interval. Ethical note: three genuine
   separate accounts used within stated quotas; no quota circumvention beyond documented limits.
@@ -54,22 +54,30 @@
   Gemma-4 E4B 8B instruction-tuned for Indic translation. QLoRA (4-bit NF4, all-linear LoRA)
   is the only way 8B fits Kaggle GPUs, and the public Arushhh recipe gives a proven
   configuration to mirror rather than re-search under a 30h budget.
-- **Fallback: `ai4bharat/indictrans2-indic-indic-dist-320M` + IndicTransToolkit**
-  (`hin_Deva->mar_Deva`). MIT-licensed, 320M params, trains on any Kaggle GPU. Guarantees
-  submittable artifacts + metrics even if Session A stalls on VRAM or gating.
+- **Session B: `ai4bharat/indictrans2-en-indic-dist-200M` + IndicTransToolkit**
+  (`eng_Latn->mar_Deva`). Gated `auto` (one-time accept), 200M params, trains on
+  any Kaggle GPU. Guarantees submittable artifacts + metrics even if Session A
+  stalls on VRAM or gating.
 - **Attribution (license compliance):** outputs derived from `indic-translate` carry
   "Built with indic-translate from Bodhan AI / AI4Bharat" and Indic Open Model License v1.0
   share-alike terms.
 
 ## 4. Dataset choice + not-in-training rationale + decontamination
 
-- **Train: `coild-aikosh/Education_v2`, HIN–MAR slice (CC-BY-4.0).** Chosen because it is
-  (a) **education-domain** (matches the `mr-mt-edu-2026` brief) and (b) **unlikely to have
-  been in Bodhan/IndicTrans2 pretraining**, unlike BPCC/Samanantar which are near-certain
-  pretraining ingredients. Training on BPCC/Samanantar would mostly re-measure memorization.
-- **Eval (held out, NEVER trained on): `ai4bharat/IN22-Gen` (`hin_Deva-mar_Deva`) +
-  `facebook/flores` devtest.** General-domain benchmarks, disjoint from the education train
-  slice — so gains must come from transfer, not leakage.
+- **Train: `ai4bharat/samanantar`, config `mr` (OPEN, English→Marathi,
+  CC-BY-NC-4.0), direction `eng_Latn->mar_Deva`.** This is a pivot: the preferred
+  set was `coild-aikosh/Education_v2` (education-domain HIN–MAR, CC-BY-4.0) —
+  chosen because it was **unlikely to have been in Bodhan/IndicTrans2
+  pretraining**, unlike BPCC/Samanantar which are near-certain pretraining
+  ingredients — but COILD is manual-gated and access was denied, so it is NOT
+  used. Honest caveat: Samanantar (via BPCC) WAS used in IndicTrans2
+  pretraining, so Session B scores partly re-measure memorization; Session A
+  (Bodhan) is less affected.
+- **Eval (held out, NEVER trained on): `ai4bharat/IN22-Gen` (config null/
+  `default`, split `test`) + `facebook/flores` (config `eng_Latn-mar_Deva`,
+  split `devtest`), direction `eng_Latn->mar_Deva`.** General-domain
+  benchmarks, disjoint from the Samanantar train slice — so gains must come
+  from transfer, not leakage.
 - **Decontamination gates** (full table in `reports/LEAKAGE_CHECKLIST.md`, L1..L10):
   pair-hash blocklist of test sets vs train; exact + src-only near-dup filtering
   (threshold 0.9, see `configs/base.yaml` `prepare.near_dup_threshold`); length filters
@@ -139,14 +147,14 @@ Fallback (Session B) deltas: `SEQ_2_SEQ_LM` LoRA on `q_proj,k_proj` only,
 | 3 | `transformers` version split (A needs ≥5.5.2, B needs <5) | Two envs; `requirements.txt` pins A/C, comments pin B |
 | 4 | 12h session timeouts | All checkpoints kept + Drive sync (live rclone / Hub optional); resume-from-checkpoint flow (`docs/TRAINING.md`) |
 | 5 | P100 lacks bf16/FA2 | fp16 fallback path; T4 preferred for Session A |
-| 6 | Leakage risk (BPCC-adjacent data) | Education_v2 choice + L1..L10 checklist + normalize-before-score |
+| 6 | Leakage risk (Samanantar IS BPCC-adjacent pretraining data) | Samanantar pivot (COILD denied) + L1..L10 checklist + normalize-before-score; Session B memorization caveat stated in §4 |
 | 7 | No hosted tracking | TensorBoard per session + `reports/experiments.csv` index + Drive sync |
 
 ## 9. Reproduce
 
 ```bash
 pip install -r requirements.txt   # Session A/C env (see docs/SETUP.md for Session B env)
-make data                         # Education_v2 -> data/processed/{train,dev,test}.jsonl
+make data                         # Samanantar mr -> data/processed/{train,dev,test}.jsonl
 make train-a                      # primary Bodhan 8B QLoRA (Session A)
 make eval                         # IN22-Gen + FLORES -> reports/metrics.json
 make figures                      # loss / length-hist / metric bars -> reports/figures/
@@ -159,10 +167,10 @@ Environment + gated access: [docs/SETUP.md](docs/SETUP.md).
 
 1. **Ablation matrix (Session C extension):** r ∈ {16, 32, 64} × LR ∈ {5e-5, 1e-4} on a fixed
    2k subset; log to `reports/experiments.csv` — currently only single-point recipe mirror.
-2. **Back-translation augmentation:** Marathi monolingual → Hindi pseudo-pairs, filtered by
-   round-trip chrF, to grow education-domain coverage without new parallel data.
+2. **Back-translation augmentation:** Marathi monolingual → English pseudo-pairs, filtered by
+   round-trip chrF, to grow general-domain coverage without new parallel data.
 3. **chrF++ + COMET:** add learned metric alongside BLEU/chrF for morphologically rich Marathi.
 4. **Merged-weight serving:** merge LoRA → full checkpoint, quantize (GGUF/AWQ), latency/quality
-   report on a fixed 500-sentence education slice.
+   report on a fixed 500-sentence general-domain slice.
 5. **Error taxonomy:** annotate 200 failures (agreement, postpositions, technical terms) to drive
    the next data slice choice.
