@@ -19,6 +19,25 @@ from pathlib import Path
 from typing import Optional
 
 
+def get_env_secret(name: str) -> Optional[str]:
+    """Resolve a non-HF knob: environment first, then a gitignored ``.env`` entry.
+
+    Used for optional demo/run knobs (e.g. ``BODHAN_API_KEY``); the HF token has
+    its own richer resolution order in :func:`get_hf_token`.
+    """
+    value = os.environ.get(name)
+    if value:
+        return value.strip()
+
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith(f"{name}="):
+                return line.split("=", 1)[1].strip()
+    return None
+
+
 def get_hf_token() -> Optional[str]:
     """Resolve the HuggingFace token (see module docstring for the order)."""
     for env_key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
@@ -48,10 +67,4 @@ def get_hf_token() -> Optional[str]:
                 except OSError:
                     continue
 
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("HF_TOKEN="):
-                return line.split("=", 1)[1].strip()
-    return None
+    return get_env_secret("HF_TOKEN")

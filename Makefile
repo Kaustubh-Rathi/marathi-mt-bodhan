@@ -12,10 +12,10 @@ SESSION_C    := configs/sessionC_ablation.yaml
 
 export PYTHONPATH
 
-.PHONY: data train-a train-b train-c eval figures sync clean help
+.PHONY: data train-a train-b train-c eval figures demo sync clean help
 
 help:
-	@echo "targets: data train-a train-b train-c eval figures sync clean"
+	@echo "targets: data train-a train-b train-c eval figures demo sync clean"
 
 # Build data/processed/{train,dev,test}.jsonl from configs/base.yaml
 data:
@@ -40,6 +40,11 @@ eval:
 # Eval metrics bar chart -> reports/figures/metrics.png
 figures:
 	$(PYTHON) -m mr_mt.plots --kind metrics --inp reports/metrics.json --out reports/figures/metrics.png
+
+# Demo: built-in Hindi sentence set -> Marathi (+ hosted-API comparison if
+# BODHAN_API_KEY/BODHAN_API_URL are set). Writes nothing; prints HI/MR pairs.
+demo:
+	$(PYTHON) -m mr_mt.demo --config $(SESSION_A)
 
 # Push local artifacts/ to Drive (gdrive:mr-mt-edu-2026/). The live per-session
 # checkpoint mirror goes to gdrive:mr-mt-edu-2026/{bodhan-qlora,indictrans2-lora,ablation}/checkpoints.

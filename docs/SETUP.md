@@ -52,6 +52,19 @@ it and installs the static rclone binary to `/kaggle/working/bin` if absent. The
 session configs set `checkpointing.rclone_remote`, so every checkpoint is rcloned to
 Drive during training (see [TRAINING.md](TRAINING.md)).
 
+**Local Drive sync (one-time, per machine).** The `gdrive:` remote lives in your
+rclone profile (`%APPDATA%\rclone\rclone.conf`), never in the repo. On a new
+machine: `rclone config` → new remote named `gdrive` → storage `drive` →
+client_id/secret blank → scope `drive.file` → auto config **yes** → browser login,
+then `rclone lsd gdrive:` to verify. Staging is the gitignored `artifacts/`
+inside the repo: pull a kernel's output with
+`scripts/pull_kaggle_output.ps1 -Slug <owner/slug> -Acct <1|2|3>` (per-account
+`~/.kaggle/access_token[_acct2|_acct3]`), then `scripts/sync_drive.ps1` (or
+`make sync`) to copy `artifacts/` → `gdrive:mr-mt-edu-2026/`. The rclone binary
+path is overridable via the gitignored `scripts/rclone_path.txt`, falling back
+to `rclone` on `PATH`. The same `gdrive-creds` credentials are mounted inside
+Kaggle kernels (`_find_rclone_conf`).
+
 ### GPU + persistence
 
 Enable GPU and Internet in `kernel-metadata.*.json` (`enable_gpu`, `enable_internet`).
@@ -79,7 +92,10 @@ with `transformers>=5`:
 ```bash
 pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacrebleu \
   huggingface_hub PyYAML pandas matplotlib tensorboard peft
-:: plus IndicTrans2 huggingface_interface from https://github.com/AI4Bharat/IndicTrans2
+:: optional — only if `trust_remote_code` is blocked in your environment, install
+:: the AI4Bharat interface instead:
+::   git clone --depth 1 https://github.com/AI4Bharat/IndicTrans2 /tmp/IndicTrans2
+::   pip install /tmp/IndicTrans2/huggingface_interface
 ```
 
 > Never install both stacks in one env — Session B's `<5` pin will break Session A's

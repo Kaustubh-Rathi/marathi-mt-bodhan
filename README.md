@@ -36,6 +36,7 @@ marathi-mt-bodhan/
 │   ├── train_indictrans2_lora.py  # Session B (fallback, 320M LoRA)
 │   ├── evaluate.py            # IN22-Gen + FLORES scoring -> metrics.json
 │   ├── inference.py           # single-string translate CLI
+│   ├── demo.py                # fixed-sentence demo + optional hosted-API comparison
 │   └── plots.py               # loss / length-hist / metric-bar figures
 ├── scripts/
 │   ├── kaggle/                # Kaggle SCRIPT kernels (no notebooks): kaggle_env + kernel_*.py + metadata
@@ -71,6 +72,8 @@ make train-a
 
 - `make data` builds `data/processed/{train,dev,test}.jsonl` from `configs/base.yaml`.
 - `make train-a` runs the primary Bodhan 8B QLoRA fine-tune (Session A).
+- `make demo` prints Marathi translations for the built-in Hindi sentence set
+  (adds a Bodhan hosted-API comparison when `BODHAN_API_KEY`/`BODHAN_API_URL` are set).
 - See [docs/SETUP.md](docs/SETUP.md) before anything gated, and
   [docs/TRAINING.md](docs/TRAINING.md) for sessions B/C, resume, and monitoring.
 

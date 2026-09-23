@@ -18,6 +18,7 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 
 ### mr_mt/secrets.py
 - `get_hf_token() -> Optional[str]`  # env -> Kaggle Secret -> hf-token Dataset -> .env
+- `get_env_secret(name) -> Optional[str]`  # env -> .env, for non-HF knobs (e.g. BODHAN_API_KEY)
 
 ### mr_mt/utils.py
 - `set_seed(seed: int) -> None`
@@ -67,8 +68,15 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - Benchmarks configured as list of {dataset, config, split, src_lang, tgt_lang}.
 
 ### mr_mt/inference.py
-- `translate(text, model, tokenizer, cfg) -> str`
-- CLI `--config --adapter --text`.
+- `translate(text, model, tokenizer, cfg, family="bodhan") -> str`
+- CLI `--config --adapter --text --family`.
+
+### mr_mt/demo.py
+- `DEMO_SENTENCES: List[str]` — fixed Hindi demo set.
+- `hosted_translate(sentence, api_url, api_key, ...) -> Optional[str]` — best-effort
+  Bodhan hosted-API call (returns `None` on failure; never raises).
+- CLI `--config --adapter --family [--sentences ...]` — prints HI/MR pairs and, when
+  `BODHAN_API_KEY`/`BODHAN_API_URL` resolve (env → `.env`), the hosted output too.
 
 ### mr_mt/plots.py
 - `plot_loss(trainer_state_or_csv, out_png)`
