@@ -1,7 +1,7 @@
 # Watch a Kaggle kernel until it finishes, saving logs locally.
 # Usage: powershell -ExecutionPolicy Bypass -File scripts/kaggle/watch_kernel.ps1 -Task bodhan [-Acct 1] [-IntervalSec 20]
 param(
-  [Parameter(Mandatory = $true)][ValidateSet("prepare","bodhan","indictrans2","eval","probe","probe2","probe3")][string]$Task,
+  [Parameter(Mandatory = $true)][ValidateSet("prepare","bodhan","indictrans2","eval","ablation","probe","probe2","probe3")][string]$Task,
   [ValidateSet("1","2","3")][string]$Acct = "",
   [int]$IntervalSec = 20,
   [int]$MaxMinutes = 720
@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $acctMap = @{ "1" = "$HOME\.kaggle\access_token"; "2" = "$HOME\.kaggle\access_token_acct2"; "3" = "$HOME\.kaggle\access_token_acct3" }
-$taskOwner = @{ "prepare"="acajjhfh"; "bodhan"="kaustubhcrathi"; "indictrans2"="dreamexcellence"; "eval"="kaustubhcrathi"; "probe"="kaustubhcrathi"; "probe2"="dreamexcellence"; "probe3"="acajjhfh" }
-$taskAcct = @{ "prepare"="3"; "bodhan"="1"; "indictrans2"="2"; "eval"="1"; "probe"="1"; "probe2"="2"; "probe3"="3" }
+$taskOwner = @{ "prepare"="acajjhfh"; "bodhan"="kaustubhcrathi"; "indictrans2"="dreamexcellence"; "eval"="kaustubhcrathi"; "ablation"="acajjhfh"; "probe"="kaustubhcrathi"; "probe2"="dreamexcellence"; "probe3"="acajjhfh" }
+$taskAcct = @{ "prepare"="3"; "bodhan"="1"; "indictrans2"="2"; "eval"="1"; "ablation"="3"; "probe"="1"; "probe2"="2"; "probe3"="3" }
 if (-not $Acct) { $Acct = $taskAcct[$Task] }
 
 $metaPath = Join-Path $PSScriptRoot "kernel-metadata.$Task.json"

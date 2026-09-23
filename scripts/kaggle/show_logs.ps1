@@ -1,12 +1,12 @@
 # Fetch a kernel's current logs and print a readable tail (ASCII-safe).
 # Usage: powershell -ExecutionPolicy Bypass -File scripts/kaggle/show_logs.ps1 -Task bodhan [-Acct 1]
 param(
-  [Parameter(Mandatory = $true)][ValidateSet("prepare","bodhan","indictrans2","eval","probe","probe2","probe3")][string]$Task,
+  [Parameter(Mandatory = $true)][ValidateSet("prepare","bodhan","indictrans2","eval","ablation","probe","probe2","probe3")][string]$Task,
   [ValidateSet("1","2","3")][string]$Acct = "",
   [int]$Tail = 60
 )
 $acctMap = @{ "1" = "$HOME\.kaggle\access_token"; "2" = "$HOME\.kaggle\access_token_acct2"; "3" = "$HOME\.kaggle\access_token_acct3" }
-$taskAcct = @{ "prepare"="3"; "bodhan"="1"; "indictrans2"="2"; "eval"="1"; "probe"="1"; "probe2"="2"; "probe3"="3" }
+$taskAcct = @{ "prepare"="3"; "bodhan"="1"; "indictrans2"="2"; "eval"="1"; "ablation"="3"; "probe"="1"; "probe2"="2"; "probe3"="3" }
 if (-not $Acct) { $Acct = $taskAcct[$Task] }
 
 $meta = Get-Content -LiteralPath (Join-Path $PSScriptRoot "kernel-metadata.$Task.json") -Raw | ConvertFrom-Json
