@@ -84,13 +84,19 @@ invalid/expired (check <https://huggingface.co/settings/tokens> — `whoami` mus
 succeed) or the account was never granted access (open the repo page and accept
 the licence; **`coild-aikosh/Education_v2` is a MANUAL gate** that needs the
 owner's approval, so it can take hours). `unknown` is inconclusive, not a
-failure. Kernels run the same probe at startup — before the pip install — and
-print an `ACTION REQUIRED` block naming the repos that failed.
+failure. Kernels run the same probe at startup — before the pip install — print
+an `ACTION REQUIRED` block naming the repos that failed, and **abort
+(`SystemExit`) immediately** when a repo is definitely blocked or no token
+candidate exists; set the Secret `MR_MT_TOKEN_PROBE=0` to bypass.
+To verify a rotation *per Kaggle account* (Secret included — invisible locally),
+push the CPU-only probe kernel: `push_kernel.ps1 -Task probe|probe2|probe3`
+(acct1/2/3), then read `kaggle kernels logs <slug>` for `whoami=OK as <user>`.
 
 **Rotating the token** means updating `HF_TOKEN` in *both* the local `.env` and
 the private `hf-token` Dataset (or the `HF_TOKEN` Kaggle Secret) for **every**
 account: a stale Kaggle Secret outranks the Dataset, though the startup probe now
-skips a token that fails its gated-repo checks.
+skips a token that fails its gated-repo checks. Confirm with the probe kernel on
+each account before re-launching a 12h session.
 
 ## 3. Dependencies — TWO environments (do not mix)
 

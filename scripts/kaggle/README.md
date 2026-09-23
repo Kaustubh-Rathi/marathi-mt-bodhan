@@ -24,6 +24,9 @@ Account → task mapping (each account runs its own kernel):
 | train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-qlora-train` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` |
 | train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-lora-train` | `dreamexcellence/hf-token`, `dreamexcellence/gdrive-creds` |
 | evaluate | `kaustubhcrathi/marathi-mt-evaluate-adapter` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` (adapter auto-fetch) |
+| probe | `kaustubhcrathi/marathi-mt-token-probe` | `kaustubhcrathi/hf-token` |
+| probe2 | `dreamexcellence/marathi-mt-token-probe-acct2` | `dreamexcellence/hf-token` |
+| probe3 | `acajjhfh/marathi-mt-token-probe-acct3` | `acajjhfh/hf-token` |
 
 > Kaggle derives a kernel's slug from its **title**, not from the metadata `id`.
 > The ids above are the real (title-derived) slugs, so `kernels status/output <id>`
@@ -44,6 +47,22 @@ python scripts/kaggle/kaggle_env.py --check-access indictrans2 # acct2 fallback
 accepted for the account owning the token (accept on the repo page;
 `coild-aikosh/Education_v2` is a manual gate). Fix the token in `.env` **and** in
 the `hf-token` Dataset/Secret of every account, then re-launch.
+
+To verify a rotation **on Kaggle itself** (the local check cannot see a Kaggle
+Secret), push the CPU-only probe kernel (~30 s, no GPU quota):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task probe   # acct1
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task probe2  # acct2
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task probe3  # acct3
+kaggle kernels logs <slug printed by the push>   # look for "whoami=OK as <you>"
+```
+
+It lists every token candidate (env / Secret / mounted Dataset) with its
+`whoami` result and per-repo verdicts for **both** stacks' gated repos. kernels
+also **fail fast** now: a definitive `BLOCKED` (or no token at all) aborts at
+startup — before the pip install — instead of dying minutes later at data
+download; bypass with the `MR_MT_TOKEN_PROBE=0` Secret.
 
 ## Launch
 

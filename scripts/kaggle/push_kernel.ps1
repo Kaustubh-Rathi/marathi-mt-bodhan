@@ -9,7 +9,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task indictrans2 -Acct 2
 #   powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task prepare -DryRun
 param(
-  [Parameter(Mandatory = $true)][ValidateSet("prepare", "bodhan", "indictrans2", "eval")][string]$Task,
+  [Parameter(Mandatory = $true)][ValidateSet("prepare", "bodhan", "indictrans2", "eval", "probe", "probe2", "probe3")][string]$Task,
   [ValidateSet("1", "2", "3")][string]$Acct = "",
   [switch]$DryRun
 )
@@ -23,6 +23,9 @@ if (-not $Acct) {
     "bodhan"      { "1" }
     "indictrans2" { "2" }
     "eval"        { "1" }
+    "probe"       { "1" }
+    "probe2"      { "2" }
+    "probe3"      { "3" }
   }
 }
 

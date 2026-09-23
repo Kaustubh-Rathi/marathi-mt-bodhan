@@ -211,6 +211,58 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
             kaggle_env._report_access({"datasets/coild-aikosh/Education_v2": True})
         self.assertEqual(buf.getvalue(), "", "all-OK must stay silent")
 
+    def test_activate_fails_fast_on_blocked_repo(self) -> None:
+        """A definite 401/403 must abort BEFORE the pip install, not at download."""
+        verdict = {"token": "tok", "source": "env:HF_TOKEN",
+                   "results": {"datasets/coild-aikosh/Education_v2": False,
+                               "models/bodhan-ai/indic-translate": None}}
+        with mock.patch.object(kaggle_env, "_install_deps") as install, \
+                mock.patch.object(kaggle_env, "_configure_rclone"), \
+                mock.patch.object(secrets, "select_hf_token",
+                                  return_value=("tok", "env:HF_TOKEN")), \
+                mock.patch.object(kaggle_env, "verify_hf_access",
+                                  return_value=verdict), \
+                mock.patch.dict(os.environ, {"MR_MT_TOKEN_PROBE": "1"}), \
+                redirect_stdout(io.StringIO()), \
+                redirect_stderr(io.StringIO()) as err:
+            with self.assertRaises(SystemExit) as cm:
+                kaggle_env.activate("bodhan")
+        install.assert_not_called()
+        self.assertIn("coild-aikosh/Education_v2", str(cm.exception))
+        self.assertIn("ACTION REQUIRED", err.getvalue())
+
+    def test_activate_fails_fast_without_any_token(self) -> None:
+        """No candidate at all + probe on => abort (gated downloads would 401)."""
+        with mock.patch.object(kaggle_env, "_install_deps") as install, \
+                mock.patch.object(kaggle_env, "_configure_rclone"), \
+                mock.patch.object(secrets, "select_hf_token",
+                                  return_value=(None, "none")), \
+                mock.patch.object(kaggle_env, "verify_hf_access") as verify, \
+                mock.patch.dict(os.environ, {"MR_MT_TOKEN_PROBE": "1"}), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                kaggle_env.activate("bodhan")
+        install.assert_not_called()
+        verify.assert_not_called()
+        self.assertIn("no HF token candidate", str(cm.exception))
+
+    def test_activate_proceeds_when_verdict_unknown(self) -> None:
+        """`None` (404/offline) is not a failure — the run must continue."""
+        verdict = {"token": "tok", "source": "env:HF_TOKEN",
+                   "results": {"datasets/coild-aikosh/Education_v2": None}}
+        with mock.patch.object(kaggle_env, "_install_deps") as install, \
+                mock.patch.object(kaggle_env, "_configure_rclone") as rclone, \
+                mock.patch.object(secrets, "select_hf_token",
+                                  return_value=("tok", "env:HF_TOKEN")), \
+                mock.patch.object(kaggle_env, "verify_hf_access",
+                                  return_value=verdict), \
+                mock.patch.dict(os.environ, {"MR_MT_TOKEN_PROBE": "1"}), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            repo = kaggle_env.activate("bodhan")
+        install.assert_called_once_with("bodhan")
+        rclone.assert_called_once()
+        self.assertTrue((repo / "src" / "mr_mt").is_dir())
+
     def test_cli_exit_code_reflects_verdict(self) -> None:
         blocked = {"token": "t", "source": "dotenv:.env",
                    "results": {"datasets/coild-aikosh/Education_v2": False}}

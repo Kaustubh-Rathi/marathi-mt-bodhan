@@ -1,0 +1,15 @@
+{
+  "id": "acajjhfh/marathi-mt-token-probe-acct3",
+  "title": "Marathi MT - token probe acct3",
+  "code_file": "kernel_probe_token.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["acajjhfh/hf-token"],
+  "keywords": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

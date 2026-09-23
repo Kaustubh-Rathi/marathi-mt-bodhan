@@ -118,16 +118,21 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `kaggle_env.get_setting(name, default="")` — env var, then Kaggle Secret.
 - `kaggle_env.verify_hf_access(stack) -> {"token","source","results"}` — probes the
   stack's gated repos and returns per-repo `True`/`False`(401|403)/`None`; `activate()`
-  runs it *before* the pip install and prints an `ACTION REQUIRED` block on failure.
+  runs it *before* the pip install, prints an `ACTION REQUIRED` block, and raises
+  `SystemExit` (fail-fast) when a repo is definitively blocked or no token candidate
+  exists. `None` (unknown) never aborts; `MR_MT_TOKEN_PROBE=0` skips probe + abort.
 - `python scripts/kaggle/kaggle_env.py --check-access <stack>` — the same probe as a
   local pre-flight CLI (exit 1 when a repo is definitively blocked).
 - `kaggle_env.latest_confirmed_checkpoint(remote) -> Optional[str]` — highest
   `checkpoint-<N>` under a Drive remote that has the `_upload_complete` marker.
 - `kaggle_env.rclone_fetch(remote_dir, local_dir, includes=None) -> bool`.
-- `kernel_prepare_data.py`, `kernel_train_bodhan.py`, `kernel_train_indictrans2.py`, `kernel_evaluate.py` — thin
+- `kernel_prepare_data.py`, `kernel_train_bodhan.py`, `kernel_train_indictrans2.py`, `kernel_evaluate.py`,
+  `kernel_probe_token.py` — thin
   entrypoints; the train kernels auto-run download+prepare if `data/processed`
   is missing and honour `MR_MT_RESUME=auto`; the eval kernel auto-fetches the
-  latest confirmed Drive checkpoint when `MR_MT_ADAPTER` is unset.
+  latest confirmed Drive checkpoint when `MR_MT_ADAPTER` is unset; the probe
+  kernel (tasks `probe`/`probe2`/`probe3`, CPU-only) lists every HF token
+  candidate an account can see with `whoami` + gated-repo verdicts.
   `kernel-metadata.*.json` set `kernel_type: script`, GPU, internet,
   and the private `hf-token` / `gdrive-creds` datasets.
 

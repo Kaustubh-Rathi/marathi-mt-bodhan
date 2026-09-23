@@ -276,7 +276,13 @@ def _report_access(results: dict) -> None:
 
 
 def activate(stack: str = "bodhan") -> Path:
-    """Set up paths, token, optional deps and rclone; return the repo dir."""
+    """Set up paths, token, optional deps and rclone; return the repo dir.
+
+    Raises ``SystemExit`` (fail-fast) when the probe finds a gated repo the
+    token definitely cannot read, or no token at all — both would kill the
+    run later anyway, so stop before the pip install. ``MR_MT_TOKEN_PROBE=0``
+    disables the probe and the abort; ``None`` (unknown) verdicts never abort.
+    """
     repo = _ensure_import_path()
     os.chdir(repo)
 
@@ -298,6 +304,15 @@ def activate(stack: str = "bodhan") -> Path:
             file=sys.stderr,
         )
 
+    if required and not token:
+        # No candidate anywhere (env / Secret / Dataset / .env): the gated
+        # downloads would fail anonymously - stop before the pip install.
+        raise SystemExit(
+            "[kaggle_env] fail-fast: no HF token candidate found, but this "
+            "stack needs gated-repo access. Attach the hf-token Dataset / set "
+            "the HF_TOKEN Secret, or set MR_MT_TOKEN_PROBE=0 to run anyway."
+        )
+
     if required and token:
         verdict = verify_hf_access(stack, token=token)
         _report_access(verdict["results"])
@@ -309,6 +324,20 @@ def activate(stack: str = "bodhan") -> Path:
                 for repo, ok in verdict["results"].items()
             )
         )
+        blocked = [
+            repo for repo, ok in verdict["results"].items() if ok is False
+        ]
+        if blocked:
+            # Fail fast on a DEFINITE 401/403: the run would die at download
+            # time anyway, so stop before the 1-3 min pip install. unknown
+            # (None = 404/offline) never aborts; MR_MT_TOKEN_PROBE=0 clears
+            # `required` above and bypasses this entirely.
+            raise SystemExit(
+                "[kaggle_env] fail-fast: HF token cannot read "
+                + ", ".join(blocked)
+                + " - see ACTION REQUIRED above; fix the token/licence or set "
+                "MR_MT_TOKEN_PROBE=0 to run anyway."
+            )
 
     # 2. Pinned stack, rclone config, summary.
     _install_deps(stack)
