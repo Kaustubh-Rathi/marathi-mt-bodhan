@@ -1,0 +1,15 @@
+{
+  "id": "your-kaggle-username/marathi-mt-prepare-data",
+  "title": "Marathi MT - prepare data",
+  "code_file": "prepare_data.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["your-kaggle-username/hf-token"],
+  "keywords": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

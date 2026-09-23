@@ -1,0 +1,18 @@
+{
+  "id": "your-kaggle-username/marathi-mt-evaluate",
+  "title": "Marathi MT - evaluate adapter",
+  "code_file": "evaluate.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "your-kaggle-username/hf-token",
+    "your-kaggle-username/marathi-mt-adapters"
+  ],
+  "keywords": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

@@ -15,10 +15,13 @@ venv/
 *.bin
 *.pt
 *.ckpt
+*.pth
 models/*
 !models/.gitkeep
+artifacts/
 outputs/
 runs/
+checkpoint_mirror/
 wandb/
 mlruns/
 

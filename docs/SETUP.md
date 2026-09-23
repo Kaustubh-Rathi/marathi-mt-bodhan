@@ -7,12 +7,13 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
 
 1. Create a token at https://huggingface.co/settings/tokens (read role is enough to
    download; write role only if pushing checkpoints to the Hub).
-2. Accept each gated license while logged in (`facebook/flores` is public CC-BY-SA —
-   no acceptance needed):
+2. Accept each gated license while logged in:
    - `coild-aikosh/Education_v2` — https://huggingface.co/datasets/coild-aikosh/Education_v2
    - `ai4bharat/IN22-Gen` — https://huggingface.co/datasets/ai4bharat/IN22-Gen
+   - `facebook/flores` — https://huggingface.co/datasets/facebook/flores (gated; accept conditions)
    - `bodhan-ai/indic-translate` — https://huggingface.co/bodhan-ai/indic-translate
    - `google/gemma-4-E4B-it` — https://huggingface.co/google/gemma-4-E4B-it
+   - `ai4bharat/indictrans2-indic-indic-dist-320M` — https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M (gated; Session B fallback)
 3. Local login:
    ```bash
    copy .env.example .env
@@ -20,31 +21,34 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
    ```
    Or export `HF_TOKEN` in the environment (takes precedence over `.env`).
 
-## 2. Kaggle secrets
+## 2. Kaggle token + code delivery (script kernels)
 
-- Each of the 3 session accounts (A/B/C) adds a Kaggle secret named **`HF_TOKEN`**
-  (Add-ons → Secrets → Add Secret), attached to its notebook.
-- Notebook preamble reads the secret into the environment before any `mr_mt` import:
-  ```python
-  from kaggle_secrets import UserSecretsClient
-  import os
-  os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
-  ```
-- GPU + persistence per session: enable GPU accelerator, enable Internet (Hub + dataset
-  downloads), and persist `/kaggle/working/run` (checkpoints every 100 steps double as
-  Hub resume points — see `docs/TRAINING.md`).
+We run Kaggle **script kernels** (`kernel_type: script`), not notebooks.
+`kaggle kernels push` cannot attach Secrets (Kaggle/kaggle-api#582), so the token
+is delivered as a **private Kaggle Dataset**:
 
-### Getting the code onto Kaggle
+1. Create a private Dataset containing a single file `hf_token.txt` (your HF token).
+   Note its slug, e.g. `your-kaggle-username/hf-token`.
+2. Attach it in each `scripts/kaggle/kernel-metadata.*.json` under `dataset_sources`.
+3. `mr_mt.utils.get_hf_token()` resolves the token in this order: `HF_TOKEN` env →
+   Kaggle Secret (if manually attached via web UI) → `/kaggle/input/**/hf_token.txt`
+   → gitignored `.env`. It is exported as `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` in
+   `scripts/kaggle/bootstrap.py`.
 
-The notebooks assume the repo exists at `/kaggle/working/marathi-mt-bodhan`. Get it
-there by either:
+Code delivery: `bootstrap.py` locates the repo at `MR_MT_REPO_DIR`
+(default `/kaggle/working/marathi-mt-bodhan`) and `git clone`s it from
+`MR_MT_REPO_URL` if missing. **Never put `.env` or the token in the repo.**
 
-- `git clone <private-repo-url>` in the first notebook cell (recommended; a private
-  repo needs a GitHub token in the clone URL), or
-- uploading a repo zip as a Kaggle Dataset and unzipping it in the notebook.
+Optional: for live checkpoint mirroring to Drive, create a private Dataset
+`gdrive-creds` containing your rclone config/`sa.json`; `bootstrap._configure_rclone()`
+wires `RCLONE_CONFIG*` env vars automatically.
 
-**Never upload `.env`** (it is gitignored and contains tokens) — put `HF_TOKEN` in
-Kaggle Secrets as above.
+### GPU + persistence
+
+Enable GPU and Internet in `kernel-metadata.*.json` (`enable_gpu`, `enable_internet`).
+`/kaggle/working` is ephemeral (12h cap, ~20GB) and only persists on a **successful**
+run — that is why every checkpoint is pushed to the Hub and mirrored
+(`mr_mt.checkpointing`). See [TRAINING.md](TRAINING.md).
 
 ## 3. Dependencies — TWO environments (do not mix)
 
@@ -70,7 +74,7 @@ pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacreble
 ```
 
 > Never install both stacks in one env — Session B's `<5` pin will break Session A's
-> Gemma-4 path and vice versa. One Kaggle notebook per session keeps this clean.
+> Gemma-4 path and vice versa. One Kaggle script kernel per session keeps this clean.
 
 ## 4. GPU notes (T4 vs P100)
 
@@ -80,5 +84,5 @@ pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacreble
 | P100 | **No bf16, no FlashAttention-2.** If assigned a P100, flip to the fp16 path (`bf16: false`, `fp16: true`) and expect slower steps; keep seq 1024, do not raise batch |
 | Either | 12h/session cap — rely on save-every-100 + Hub resume, not on finishing in one go |
 
-Verify GPU before launching: `nvidia-smi` (notebook cell) and confirm dtype flags match
+Verify GPU before launching: `nvidia-smi` (in the run script, or via `kaggle kernels logs`) and confirm dtype flags match
 the card. Session B (200M) runs fine on either card.

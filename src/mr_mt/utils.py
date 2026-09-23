@@ -35,10 +35,42 @@ EXPERIMENT_COLUMNS: List[str] = [
 
 
 def get_hf_token() -> Optional[str]:
-    """Env HF_TOKEN first, then gitignored .env, then None."""
-    token = os.environ.get("HF_TOKEN")
-    if token:
-        return token.strip()
+    """Resolve the HuggingFace token, in this order:
+
+    1. ``HF_TOKEN`` / ``HUGGING_FACE_HUB_TOKEN`` environment variable.
+    2. Kaggle Secret ``HF_TOKEN`` (works when attached via the web UI).
+    3. A private Kaggle Dataset file (reliable for ``kaggle kernels push``
+       script kernels, which cannot attach Secrets): searched under
+       ``/kaggle/input/**/hf_token.txt`` and ``token.txt``.
+    4. A gitignored ``.env`` at the repo root.
+    """
+    for env_key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        token = os.environ.get(env_key)
+        if token:
+            return token.strip()
+
+    # Kaggle Secret (requires a manual web-UI attach).
+    try:  # pragma: no cover - Kaggle-only
+        from kaggle_secrets import UserSecretsClient
+
+        token = UserSecretsClient().get_secret("HF_TOKEN")
+        if token:
+            return token.strip()
+    except Exception:
+        pass
+
+    # Private Kaggle Dataset containing the token file.
+    input_root = Path("/kaggle/input")
+    if input_root.is_dir():  # pragma: no cover - Kaggle-only
+        for name in ("hf_token.txt", "token.txt"):
+            for candidate in sorted(input_root.rglob(name)):
+                try:
+                    token = candidate.read_text(encoding="utf-8").strip()
+                    if token:
+                        return token
+                except OSError:
+                    continue
+
     env_path = Path(__file__).resolve().parents[2] / ".env"
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
