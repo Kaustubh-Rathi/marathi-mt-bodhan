@@ -1,0 +1,45 @@
+# Cell B — Session B fallback: IndicTrans2 LoRA (hin_Deva -> mar_Deva).
+# Deep-merged on top of configs/base.yaml via mr_mt.config.load_base_and_cell.
+# Session B runs on a SEPARATE env from Session A (see requirements.txt):
+# transformers>=4.33.2,<5 + IndicTransToolkit==1.1.1, because the IndicTrans2
+# huggingface_interface is incompatible with transformers>=5.
+
+run:
+  name: cellB_indictrans2_lora
+  output_dir: /kaggle/working/cellB
+
+model:
+  name: ai4bharat/indictrans2-en-indic-dist-200M
+  trust_remote_code: true
+  load_in_4bit: false
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.1
+  bias: none
+  target_modules:
+    - q_proj
+    - k_proj
+
+training:
+  max_seq_length: 256
+  per_device_train_batch_size: 8
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-4
+  lr_scheduler_type: inverse_sqrt
+  warmup_steps: 1000
+  warmup_ratio: 0
+  max_steps: 3000
+  save_steps: 500
+  eval_steps: 500
+  logging_steps: 10
+  logging_dir: /kaggle/working/cellB/logs
+  fp16: true
+  bf16: false
+  gradient_checkpointing: false
+  # optim=adamw_torch uses the torch defaults; no explicit betas key so the
+  # optimizer default betas=(0.9, 0.999) apply.
+  optim: adamw_torch
+  weight_decay: 0.01
+  max_grad_norm: 1.0

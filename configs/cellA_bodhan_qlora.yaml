@@ -1,0 +1,26 @@
+# Cell A: Bodhan Gemma-4 QLoRA main run (Session A primary).
+# Deep-merged on top of configs/base.yaml via
+# mr_mt.config.load_base_and_cell. Only overrides are listed here.
+
+run:
+  name: cellA_bodhan_qlora
+  cell: cellA_bodhan_qlora
+  output_dir: /kaggle/working/cellA
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+
+training:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  max_steps: 1000
+  save_steps: 100
+  eval_steps: 100
+  logging_dir: /kaggle/working/cellA/logs
+
+hub:
+  push_to_hub: false
+  repo_id: "your-hf-user/indic-translate-mr-education-lora"

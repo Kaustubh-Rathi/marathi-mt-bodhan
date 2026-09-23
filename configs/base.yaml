@@ -1,0 +1,103 @@
+run:
+  name: base
+  seed: 42
+  output_dir: /kaggle/working/run
+
+model:
+  name: bodhan-ai/indic-translate
+  trust_remote_code: true
+  load_in_4bit: true
+  bnb:
+    quant_type: nf4
+    double_quant: true
+    compute_dtype: bfloat16
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  bias: none
+  target_modules: all-linear
+  exclude_modules:
+    - vision_tower
+    - visual
+    - image_encoder
+    - audio_tower
+    - embed_vision
+    - embed_audio
+    - lm_head
+  modules_to_save:
+    - lm_head
+    - embed_tokens
+
+training:
+  max_seq_length: 1024
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-4
+  lr_scheduler_type: cosine_with_min_lr
+  lr_scheduler_kwargs:
+    min_lr_rate: 0.1
+  warmup_ratio: 0.03
+  max_steps: 1000
+  num_train_epochs: 0
+  save_steps: 100
+  eval_steps: 100
+  logging_steps: 10
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  optim: paged_adamw_8bit
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  report_to:
+    - tensorboard
+  logging_dir: /kaggle/working/run/logs
+  packing: false
+  assistant_only_loss: true
+
+data:
+  train_file: data/processed/train.jsonl
+  dev_file: data/processed/dev.jsonl
+  test_file: data/processed/test.jsonl
+  source_lang: hin_Deva
+  target_lang: mar_Deva
+  source_lang_name: Hindi
+  target_lang_name: Marathi
+  prompt_template: "Translate the following {src_lang_name} text to {tgt_lang_name}:\n{src}"
+
+hub:
+  push_to_hub: false
+  repo_id: ""
+  strategy: all_checkpoints
+
+prepare:
+  dataset: coild-aikosh/Education_v2
+  hf_dataset_config: null
+  direction: hin_Deva->mar_Deva
+  raw_dir: data/raw/coild
+  max_train: 8000
+  max_dev: 1000
+  min_words: 1
+  max_words: 100
+  dedup: true
+  near_dup_threshold: 0.9
+  seed: 42
+
+eval:
+  max_new_tokens: 256
+  num_beams: 5
+  batch_size: 8
+  benchmarks:
+    - name: in22_gen
+      dataset: ai4bharat/IN22-Gen
+      config: hin_Deva-mar_Deva
+      split: gen
+      src_lang: hin_Deva
+      tgt_lang: mar_Deva
+    - name: flores_devtest
+      dataset: facebook/flores
+      config: hin_Deva-mar_Deva
+      split: devtest
+      src_lang: hin_Deva
+      tgt_lang: mar_Deva

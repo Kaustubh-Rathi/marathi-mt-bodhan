@@ -1,0 +1,36 @@
+# secrets
+.env
+*.env
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# artifacts / weights
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+models/*
+!models/.gitkeep
+outputs/
+runs/
+wandb/
+mlruns/
+
+# data
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# vendor clones (no-license references, local only)
+vendor/*
+
+# kaggle / hf caches
+.kaggle/
+.cache/

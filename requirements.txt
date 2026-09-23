@@ -1,0 +1,23 @@
+# Session A + C (Bodhan Gemma-4 QLoRA) — pinned to the Arushhh-proven stack
+transformers==5.13.1
+trl==1.6.0
+peft==0.20.0
+datasets==5.0.1
+tokenizers==0.22.2
+accelerate
+bitsandbytes
+sentencepiece
+sacrebleu
+huggingface_hub
+PyYAML
+pandas
+matplotlib
+tensorboard
+
+# Session B (IndicTrans2 fallback) — install separately, conflicts with transformers>=5
+# IndicTransToolkit==1.1.1
+# transformers>=4.33.2,<5
+# IndicTrans2 repo: https://github.com/AI4Bharat/IndicTrans2 (huggingface_interface)
+
+# Optional (Session C speed experiment)
+# unsloth
