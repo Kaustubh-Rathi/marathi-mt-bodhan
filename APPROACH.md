@@ -27,7 +27,7 @@
 
 | Option | Pros | Cons | Verdict |
 | ------ | ---- | ---- | ------- |
-| Unsloth | Fastest kernels, low VRAM | Opaque patched kernels; Gemma-4 support lag; harder to attribute each hyperparameter | Rejected for primary (kept as Session C speed experiment only) |
+| Unsloth | Fastest kernels, low VRAM | Opaque patched kernels; Gemma-4 support lag; harder to attribute each hyperparameter | **Rejected** — not used in any session (only a commented optional line in `requirements.txt`); Session C is a Bodhan QLoRA ablation (r 32/64→16/32, lr 1e-4→5e-5, seq 1024→512, steps 1000→600) |
 | **TRL + PEFT (+ BitsAndBytes NF4)** | Transparent `SFTTrainer`/`LoraConfig`; public Arushhh recipe maps 1:1 onto it; auditable | Slower than Unsloth | **Chosen for Session A** |
 | Axolotl | Great YAML-driven sweeps | Extra abstraction over failures we needed to see raw (ClippableLinear, mm columns) | Rejected — debugging surface too indirect for Gemma-4 gotchas |
 
@@ -42,7 +42,7 @@
 ### 2d. Compute: single vs multi-account Kaggle
 
 - Single account = 30h/week, one failure kills the story.
-- **Chosen: 3 sessions/accounts** — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2-200M fallback
+- **Chosen: 3 sessions/accounts** — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2-320M fallback
   (Acct2), C = ablation/demo (Acct3). Each keeps every checkpoint (every 100 steps) and
   syncs them to Drive, so a 12h
   session timeout costs at most one checkpoint interval. Ethical note: three genuine
@@ -55,7 +55,7 @@
   is the only way 8B fits Kaggle GPUs, and the public Arushhh recipe gives a proven
   configuration to mirror rather than re-search under a 30h budget.
 - **Fallback: `ai4bharat/indictrans2-indic-indic-dist-320M` + IndicTransToolkit**
-  (`hin_Deva->mar_Deva`). MIT-licensed, 200M params, trains on any Kaggle GPU. Guarantees
+  (`hin_Deva->mar_Deva`). MIT-licensed, 320M params, trains on any Kaggle GPU. Guarantees
   submittable artifacts + metrics even if Session A stalls on VRAM or gating.
 - **Attribution (license compliance):** outputs derived from `indic-translate` carry
   "Built with indic-translate from Bodhan AI / AI4Bharat" and Indic Open Model License v1.0

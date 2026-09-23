@@ -29,9 +29,39 @@ if (-not $Acct) {
   }
 }
 
+# Explicit task -> account-username map; must match the owner prefix of the
+# `id` field in kernel-metadata.<task>.json.
+$TaskOwner = @{
+  "bodhan"      = "kaustubhcrathi"
+  "eval"        = "kaustubhcrathi"
+  "probe"       = "kaustubhcrathi"
+  "indictrans2" = "dreamexcellence"
+  "probe2"      = "dreamexcellence"
+  "prepare"     = "acajjhfh"
+  "probe3"      = "acajjhfh"
+}
+$AcctOwner = @{
+  "1" = "kaustubhcrathi"
+  "2" = "dreamexcellence"
+  "3" = "acajjhfh"
+}
+
 $metadata = Join-Path $PSScriptRoot "kernel-metadata.$Task.json"
 if (-not (Test-Path -LiteralPath $metadata)) { throw "missing metadata file: $metadata" }
 $meta = Get-Content -LiteralPath $metadata -Raw | ConvertFrom-Json
+
+# Abort if the metadata `id` owner does not match the chosen -Acct token's
+# account (pushing another account's kernel id yields a confusing API error).
+# Runs before -DryRun handling so dry runs validate too.
+$metaOwner = ($meta.id -split "/")[0]
+$acctUser = $AcctOwner[$Acct]
+if (-not $acctUser) { throw "unknown -Acct '$Acct' (expected 1, 2, or 3)" }
+if ($metaOwner -ne $acctUser) {
+  throw "metadata id owner '$metaOwner' does not match -Acct $Acct account '$acctUser' (task '$Task' expects '$($TaskOwner[$Task])'); re-run with the correct -Acct or fix kernel-metadata.$Task.json"
+}
+if ($metaOwner -ne $TaskOwner[$Task]) {
+  throw "metadata id owner '$metaOwner' does not match expected owner '$($TaskOwner[$Task])' for task '$Task'; fix kernel-metadata.$Task.json"
+}
 
 $codeFile = Join-Path $PSScriptRoot $meta.code_file
 if (-not (Test-Path -LiteralPath $codeFile)) { throw "missing code_file: $codeFile" }

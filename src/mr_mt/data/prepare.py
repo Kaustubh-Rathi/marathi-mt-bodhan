@@ -21,7 +21,7 @@ import io
 import random
 from pathlib import Path
 
-from mr_mt.config import load_config
+from mr_mt.config import load_session_config
 from mr_mt.data.decontaminate import dedup_against, near_dup_filter, pair_hash
 from mr_mt.utils import read_jsonl, write_jsonl
 
@@ -303,12 +303,12 @@ def build_splits(cfg: dict) -> dict:
     return counts
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """CLI: build splits for ``--config``."""
     parser = argparse.ArgumentParser(description="Build train/dev/test splits.")
     parser.add_argument("--config", default="configs/base.yaml")
-    args = parser.parse_args()
-    cfg = load_config(args.config)
+    args = parser.parse_args(argv)
+    cfg = load_session_config(args.config)
     counts = build_splits(cfg)
     print(counts)
 

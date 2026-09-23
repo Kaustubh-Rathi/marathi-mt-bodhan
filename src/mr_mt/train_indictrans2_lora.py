@@ -59,7 +59,7 @@ def load_processor_and_model(cfg: dict) -> tuple:
     """
     model_name = cfg["model"]["name"]
     trust_remote_code = cfg["model"].get("trust_remote_code", True)
-    token = get_hf_token()
+    token = get_hf_token(required=[("models", model_name)])
 
     processor = IndicProcessor(inference=False)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -156,6 +156,16 @@ def build_trainer(
     """
     t = cfg["training"]
     hub = cfg.get("hub", {})
+    # Empty-dev guard (mirrors the Bodhan trainer): an empty dev split must
+    # disable evaluation instead of hardcoding "steps" (Dataset.from_list([])
+    # raises, so `eval_ds` may arrive as None/empty from main).
+    try:
+        has_eval = eval_ds is not None and len(eval_ds) > 0
+    except Exception:
+        has_eval = eval_ds is not None
+    if not has_eval:
+        eval_ds = None
+    eval_strategy_value = "steps" if has_eval else "no"
     args_kwargs = dict(
         output_dir=cfg["run"]["output_dir"],
         per_device_train_batch_size=int(t.get("per_device_train_batch_size", 8)),
@@ -170,7 +180,7 @@ def build_trainer(
         # None = keep ALL checkpoints; each is mirrored off the VM.
         save_total_limit=t.get("save_total_limit", None),
         save_only_model=bool(t.get("save_only_model", False)),
-        evaluation_strategy="steps",
+        evaluation_strategy=eval_strategy_value,
         eval_steps=int(t.get("eval_steps", 500)),
         logging_steps=int(t.get("logging_steps", 10)),
         logging_dir=t.get("logging_dir", cfg["run"]["output_dir"] + "/logs"),
@@ -184,11 +194,11 @@ def build_trainer(
         seed=int(cfg["run"].get("seed", 42)),
         predict_with_generate=bool(t.get("predict_with_generate", False)),
         generation_num_beams=int(cfg.get("eval", {}).get("num_beams", 5)),
-        generation_max_length=int(cfg.get("eval", {}).get("max_new_tokens", 256)),
+        generation_max_new_tokens=int(cfg.get("eval", {}).get("max_new_tokens", 256)),
         push_to_hub=bool(hub.get("push_to_hub", False)),
         hub_model_id=hub.get("repo_id") or None,
         hub_strategy=hub.get("strategy", "all_checkpoints"),
-        hub_token=get_hf_token(),
+        hub_token=get_hf_token(required=[("models", cfg["model"]["name"])]),
         hub_private_repo=bool(hub.get("private", True)),
         # Segfault guard (upstream #117): no multiprocessed data loading.
         dataloader_num_workers=0,
@@ -236,7 +246,9 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(
         description="Session B fallback: LoRA fine-tune IndicTrans2 (hin_Deva->mar_Deva)."
     )
-    parser.add_argument("--config", required=True, help="Path to the session YAML config.")
+    parser.add_argument(
+        "--config", required=True, help="Path to the session YAML config."
+    )
     parser.add_argument(
         "--base",
         default=None,
@@ -305,25 +317,31 @@ def main(argv=None) -> None:
             )
             for i, text in zip(idxs, pre):
                 src_texts[i] = text
-        model_inputs = tokenizer(
-            src_texts, max_length=max_len, truncation=True
-        )
-        labels = tokenizer(
-            text_target=tgts, max_length=max_len, truncation=True
-        )
+        model_inputs = tokenizer(src_texts, max_length=max_len, truncation=True)
+        labels = tokenizer(text_target=tgts, max_length=max_len, truncation=True)
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
-    train_ds = Dataset.from_list(read_jsonl(cfg["data"]["train_file"]))
-    eval_ds = Dataset.from_list(read_jsonl(cfg["data"]["dev_file"]))
+    train_rows = read_jsonl(cfg["data"]["train_file"])
+    dev_rows = read_jsonl(cfg["data"]["dev_file"])
+    train_ds = Dataset.from_list(train_rows)
+    if len(dev_rows) > 0:
+        eval_ds = Dataset.from_list(dev_rows)
+    else:
+        eval_ds = None
     train_ds = train_ds.map(
-        tokenize_batch, batched=True, batch_size=256,
+        tokenize_batch,
+        batched=True,
+        batch_size=256,
         remove_columns=train_ds.column_names,
     )
-    eval_ds = eval_ds.map(
-        tokenize_batch, batched=True, batch_size=256,
-        remove_columns=eval_ds.column_names,
-    )
+    if eval_ds is not None:
+        eval_ds = eval_ds.map(
+            tokenize_batch,
+            batched=True,
+            batch_size=256,
+            remove_columns=eval_ds.column_names,
+        )
 
     trainer = build_trainer(model, tokenizer, processor, train_ds, eval_ds, cfg)
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
@@ -335,7 +353,10 @@ def main(argv=None) -> None:
 
     hub_cfg = cfg.get("hub", {})
     if hub_cfg.get("push_to_hub") and hub_cfg.get("repo_id"):
-        model.push_to_hub(hub_cfg["repo_id"], token=get_hf_token())
+        model.push_to_hub(
+            hub_cfg["repo_id"],
+            token=get_hf_token(required=[("models", cfg["model"]["name"])]),
+        )
 
     log_experiment(
         {

@@ -39,7 +39,7 @@ change only what the assignment forces (Marathi target, Education_v2 data).
 | --- | --- | --- |
 | `model.name` | indictrans2-indic-indic-dist-320M | The en-indic checkpoint CANNOT encode Hindi source (English-source only) — indic-indic is mandatory for hin→mar. |
 | `lora.r:16/alpha:32/dropout:0.1`, targets `q_proj,k_proj` | small | 320M seq2seq needs far less adapter capacity than 8B; q/k-only mirrors known-good IndicTrans2 LoRA fine-tunes; heavier dropout suits the small model. |
-| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 320M. Session B runs transformers 4.x, where `warmup_ratio: 0.03` (from base.yaml) is passed through the still-valid `warmup_ratio` keyword (`warmup_steps` stays 0 so the ratio applies). |
+| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 320M. Session B config sets `warmup_steps: 1000` and `warmup_ratio: 0` (explicit step warmup, not the base 0.03 ratio). |
 | `max_seq_length: 256` | 256 | Sentence-level MT; IndicTrans2 convention. |
 | `per_device 8 × accum 16` (eff 128) | 128 | Standard NMT token-batch equivalent for stable seq2seq gradients. |
 | `max_steps: 3000`, save/eval 500 | — | 3000 × 128 ≈ 48 passes over 8k — small model, needs many epochs; small checkpoints, so 500-step cadence is cheap. |

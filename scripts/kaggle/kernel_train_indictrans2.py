@@ -38,12 +38,12 @@ if not Path("data/processed/train.jsonl").is_file():
     from mr_mt.data.download import main as download_main  # noqa: E402
     from mr_mt.data.prepare import main as prepare_main  # noqa: E402
 
-    download_main()
-    prepare_main()
+    download_main(["--config", "configs/base.yaml"])
+    prepare_main(["--config", "configs/base.yaml"])
 
 CONFIG = "configs/sessionB_indictrans2_lora.yaml"
 extra = []
-if kaggle_env.get_setting("MR_MT_RESUME"):
+if str(kaggle_env.get_setting("MR_MT_RESUME")).strip().lower() == "auto":
     from mr_mt.config import load_base_and_session  # noqa: E402
 
     cfg = load_base_and_session("configs/base.yaml", CONFIG)

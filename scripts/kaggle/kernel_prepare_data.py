@@ -21,5 +21,5 @@ kaggle_env.activate("bodhan")
 from mr_mt.data.download import main as download_main  # noqa: E402
 from mr_mt.data.prepare import main as prepare_main  # noqa: E402
 
-download_main()
-prepare_main()
+download_main(["--config", "configs/base.yaml"])
+prepare_main(["--config", "configs/base.yaml"])

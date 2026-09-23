@@ -82,8 +82,8 @@ It maps task → account by default (`prepare` = acct3, `bodhan`/`eval` = acct1,
 `indictrans2` = acct2) and override the token with `-Acct <1|2|3>`. Then:
 
 ```bash
-kaggle kernels status  kaustubhcrathi/marathi-mt-bodhan-train
-kaggle kernels output  kaustubhcrathi/marathi-mt-bodhan-train -p artifacts
+kaggle kernels status  kaustubhcrathi/marathi-mt-bodhan-qlora-train
+kaggle kernels output  kaustubhcrathi/marathi-mt-bodhan-qlora-train -p artifacts
 ```
 
 Pushing a *train* kernel starts the run immediately; since the train kernels
@@ -109,6 +109,7 @@ auto-run download+prepare when `data/processed` is missing, the separate
 | `MR_MT_RESUME` | `""` | `auto` → restore latest confirmed Drive checkpoint and resume (train kernels) |
 | `MR_MT_ADAPTER` | `""` | adapter path/id for `kernel_evaluate.py`; empty → auto-fetch latest confirmed checkpoint from Drive |
 | `MR_MT_FAMILY` | `bodhan` | `bodhan` or `indictrans2` for `kernel_evaluate.py` |
+| `MR_MT_CONFIG` | `configs/base.yaml` | config path for `kernel_evaluate.py` (optional) |
 | `MR_MT_TOKEN_PROBE` | `1` | `0` → skip the startup gated-repo probe of the HF token |
 
 Kaggle script kernels cannot receive custom env vars from kernel-metadata.json,

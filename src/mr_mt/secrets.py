@@ -27,7 +27,65 @@ from pathlib import Path
 from typing import Iterator, Optional, Sequence, Tuple
 
 
-def _dotenv_value(name: str) -> Optional[str]:
+def _parse_dotenv_value(raw: str) -> str:
+    """Strip quotes and trailing ``#`` comments from a raw ``.env`` value."""
+    s = raw.strip()
+    if not s:
+        return ""
+    if s[0] in ("'", '"'):
+        quote = s[0]
+        end = s.find(quote, 1)
+        if end == -1:
+            return s[1:]
+        return s[1:end]
+    # Unquoted: a ``#`` starts an inline comment only when at the start or
+    # preceded by whitespace (so ``a#b`` is preserved, ``a # c`` -> ``a``).
+    for i, ch in enumerate(s):
+        if ch == "#" and (i == 0 or s[i - 1] in (" ", "\t")):
+            return s[:i].strip()
+    return s.strip()
+
+
+def _iter_env_file(env_path: str | Path | None = None) -> Iterator[Tuple[str, str]]:
+    """Yield ``(name, value)`` pairs from a ``.env`` file.
+
+    Handles ``export NAME=value``, optional whitespace around ``=``,
+    surrounding single/double quotes, and trailing ``# comments``. Blank
+    lines, comment lines and lines without ``=`` are skipped.
+    """
+    path = (
+        Path(env_path)
+        if env_path is not None
+        else Path(__file__).resolve().parents[2] / ".env"
+    )
+    try:
+        if not path.exists():
+            return
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if (
+            stripped.startswith("export")
+            and len(stripped) > 6
+            and stripped[6] in (" ", "\t")
+        ):
+            stripped = stripped[6:].strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+        if "=" not in stripped:
+            continue
+        name, _, raw = stripped.partition("=")
+        name = name.strip()
+        if not name:
+            continue
+        yield name, _parse_dotenv_value(raw)
+
+
+def _dotenv_value(name: str, env_path: str | Path | None = None) -> Optional[str]:
     """Read ONLY the gitignored ``.env`` file — never the environment.
 
     Split out of :func:`get_env_secret` so :func:`iter_hf_tokens` can offer the
@@ -36,12 +94,9 @@ def _dotenv_value(name: str) -> Optional[str]:
     and failover to a good ``.env`` token would be impossible whenever
     ``HF_TOKEN`` is set in env.
     """
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith(f"{name}="):
-                return line.split("=", 1)[1].strip()
+    for key, value in _iter_env_file(env_path):
+        if key == name:
+            return value
     return None
 
 
@@ -82,7 +137,9 @@ def iter_hf_tokens() -> Iterator[Tuple[str, str]]:
     try:  # pragma: no cover - Kaggle-only
         from kaggle_secrets import UserSecretsClient
 
-        pair = _yield("kaggle-secret:HF_TOKEN", UserSecretsClient().get_secret("HF_TOKEN"))
+        pair = _yield(
+            "kaggle-secret:HF_TOKEN", UserSecretsClient().get_secret("HF_TOKEN")
+        )
         if pair:
             yield pair
     except Exception:
@@ -93,7 +150,10 @@ def iter_hf_tokens() -> Iterator[Tuple[str, str]]:
         for name in ("hf_token.txt", "token.txt"):
             for candidate in sorted(input_root.rglob(name)):
                 try:
-                    pair = _yield(f"kaggle-dataset:{candidate}", candidate.read_text(encoding="utf-8"))
+                    pair = _yield(
+                        f"kaggle-dataset:{candidate}",
+                        candidate.read_text(encoding="utf-8"),
+                    )
                 except OSError:
                     continue
                 if pair:
@@ -164,8 +224,12 @@ def select_hf_token(
             first = (token, label)
         if not required:
             return token, label
-        verdicts = [hf_token_can_access(token, rt, rid, timeout) for rt, rid in required]
-        bad = [f"{rt}/{rid}" for (rt, rid), ok in zip(required, verdicts) if ok is False]
+        verdicts = [
+            hf_token_can_access(token, rt, rid, timeout) for rt, rid in required
+        ]
+        bad = [
+            f"{rt}/{rid}" for (rt, rid), ok in zip(required, verdicts) if ok is False
+        ]
         if not bad:
             return token, label
         # Report each rejection immediately — even when a later candidate
@@ -185,8 +249,22 @@ def select_hf_token(
     return first
 
 
-def get_hf_token() -> Optional[str]:
-    """Resolve the HuggingFace token (first candidate in the order above)."""
+def get_hf_token(required: Sequence[Tuple[str, str]] = ()) -> Optional[str]:
+    """Resolve the HuggingFace token.
+
+    Args:
+        required: optional ``(kind, repo_id)`` pairs (kind in
+            ``{"models", "datasets"}``) the token must be able to read. When
+            non-empty, delegates to :func:`select_hf_token` so a stale env /
+            Kaggle Secret fails over to the next candidate (rejections are
+            logged there). When empty, returns the first candidate WITHOUT
+            probing (backward compatible, no network).
+    """
+    if required:
+        token, _label = select_hf_token(required)
+        if token is None:
+            print("[secrets] no HF token candidate found.", file=sys.stderr)
+        return token
     for _label, token in iter_hf_tokens():
         return token
     return None

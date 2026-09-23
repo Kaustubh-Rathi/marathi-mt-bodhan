@@ -87,13 +87,26 @@ def load_bodhan_model(cfg: dict, adapter: str = ""):
     Returns ``(model, processor)``. ``adapter`` may be ``""``/None to use
     the base model without PEFT.
     """
+    import sys
+
     import torch
-    from transformers import AutoModelForMultimodalLM, AutoProcessor
+    from transformers import AutoProcessor
+
+    try:
+        from transformers import AutoModelForMultimodalLM
+    except ImportError:
+        from transformers import AutoModelForCausalLM as AutoModelForMultimodalLM
+
+        print(
+            "WARNING: AutoModelForMultimodalLM unavailable; "
+            "falling back to AutoModelForCausalLM.",
+            file=sys.stderr,
+        )
     from transformers import BitsAndBytesConfig
 
     model_cfg = cfg.get("model", {})
     base = model_cfg.get("name", "bodhan-ai/indic-translate")
-    token = get_hf_token()
+    token = get_hf_token(required=[("models", base)])
 
     dtype = (
         torch.bfloat16
@@ -117,12 +130,29 @@ def load_bodhan_model(cfg: dict, adapter: str = ""):
         trust_remote_code=model_cfg.get("trust_remote_code", True),
         token=token,
     )
-    model = AutoModelForMultimodalLM.from_pretrained(
-        base,
-        quantization_config=quant_cfg,
-        trust_remote_code=model_cfg.get("trust_remote_code", True),
-        token=token,
-    )
+    model = None
+    last_exc: Optional[Exception] = None
+    for attn_impl in ("sdpa", "eager"):
+        try:
+            model = AutoModelForMultimodalLM.from_pretrained(
+                base,
+                quantization_config=quant_cfg,
+                device_map="auto",
+                attn_implementation=attn_impl,
+                trust_remote_code=model_cfg.get("trust_remote_code", True),
+                token=token,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 - must try next kernel
+            last_exc = exc
+            print(
+                f"WARNING: attn_implementation={attn_impl!r} failed "
+                f"({exc}); trying next.",
+                file=sys.stderr,
+            )
+    if model is None and last_exc is not None:
+        raise last_exc
+    assert model is not None
     if adapter:
         from peft import PeftModel
 
@@ -143,27 +173,37 @@ def load_indictrans2_model(cfg: dict, adapter: str = ""):
 
     model_cfg = cfg.get("model", {})
     base = model_cfg.get("name", "ai4bharat/indictrans2-indic-indic-dist-320M")
-    token = get_hf_token()
+    token = get_hf_token(required=[("models", base)])
 
     try:
-        from IndicTransToolkit.processor import IndicProcessor
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "IndicTransToolkit is required for family='indictrans2'. "
-            "Install it with `pip install IndicTransToolkit`."
-        ) from exc
+        from IndicTransToolkit import IndicProcessor
+    except ImportError:
+        try:
+            from IndicTransToolkit.processor import IndicProcessor
+        except ImportError as exc:  # pragma: no cover
+            raise ImportError(
+                "IndicTransToolkit is required for family='indictrans2'. "
+                "Install it with `pip install IndicTransToolkit`."
+            ) from exc
 
     hf_tokenizer = AutoTokenizer.from_pretrained(
         base,
         trust_remote_code=True,
         token=token,
     )
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        base,
-        trust_remote_code=True,
-        token=token,
-        attn_implementation="eager",
-    )
+    try:
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            base,
+            trust_remote_code=True,
+            token=token,
+            attn_implementation="eager",
+        )
+    except TypeError:
+        # transformers<4.36 has no `attn_implementation` kwarg; eager is the
+        # only/default attention path there, so a plain load is equivalent.
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            base, trust_remote_code=True, token=token
+        )
     if adapter:
         from peft import PeftModel
 
@@ -267,8 +307,9 @@ def _generate_indictrans2(
     pre = indic_processor.preprocess_batch(
         src_texts, src_lang=src_lang, tgt_lang=tgt_lang
     )
+    max_len = int(cfg.get("training", {}).get("max_seq_length", 256))
     inputs = hf_tokenizer(
-        pre, padding=True, truncation=True, max_length=256, return_tensors="pt"
+        pre, padding=True, truncation=True, max_length=max_len, return_tensors="pt"
     )
     inputs = {k: (v.to(device) if hasattr(v, "to") else v) for k, v in inputs.items()}
     gen_kwargs = dict(max_new_tokens=max_new, do_sample=False)
@@ -352,27 +393,31 @@ def score(preds: List[str], refs: List[str], tgt_lang: str = "mar_Deva") -> dict
 # ---------------------------------------------------------------------------
 
 
-def _extract_pair(example: dict, src_lang: str, tgt_lang: str) -> Tuple[str, str]:
-    """Extract (src, ref) from a benchmark row across known schemas.
+try:
+    from mr_mt.data.download import _extract_pair
+except Exception:  # pragma: no cover - fallback when data package unavailable
 
-    Handles IN22/FLORES ``sentence_<lang>`` columns, generic
-    ``src/tgt`` and ``source/target`` keys, and single-``text`` rows.
-    """
-    if "src" in example and "tgt" in example:
-        return str(example["src"]), str(example["tgt"])
-    if "source" in example and "target" in example:
-        return str(example["source"]), str(example["target"])
-    s_key, t_key = f"sentence_{src_lang}", f"sentence_{tgt_lang}"
-    if s_key in example and t_key in example:
-        return str(example[s_key]), str(example[t_key])
-    if "translation" in example and isinstance(example["translation"], dict):
-        tr = example["translation"]
-        if src_lang in tr and tgt_lang in tr:
-            return str(tr[src_lang]), str(tr[tgt_lang])
-    raise KeyError(
-        f"Cannot extract src/ref for {src_lang}->{tgt_lang} from keys "
-        f"{sorted(example.keys())}"
-    )
+    def _extract_pair(example: dict, src_lang: str, tgt_lang: str) -> Tuple[str, str]:
+        """Fallback extract (src, ref) from a benchmark row.
+
+        Mirrors ``mr_mt.data.download._extract_pair``; the canonical
+        implementation lives there.
+        """
+        if "src" in example and "tgt" in example:
+            return str(example["src"]), str(example["tgt"])
+        if "source" in example and "target" in example:
+            return str(example["source"]), str(example["target"])
+        s_key, t_key = f"sentence_{src_lang}", f"sentence_{tgt_lang}"
+        if s_key in example and t_key in example:
+            return str(example[s_key]), str(example[t_key])
+        if "translation" in example and isinstance(example["translation"], dict):
+            tr = example["translation"]
+            if src_lang in tr and tgt_lang in tr:
+                return str(tr[src_lang]), str(tr[tgt_lang])
+        raise KeyError(
+            f"Cannot extract src/ref for {src_lang}->{tgt_lang} from keys "
+            f"{sorted(example.keys())}"
+        )
 
 
 def _load_benchmark(

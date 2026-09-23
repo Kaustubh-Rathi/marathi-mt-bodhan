@@ -34,7 +34,7 @@ account, including pushed script kernels, via `UserSecretsClient`:
    management, NOT a limitation on reading secrets from kernels.)
 2. **Fallback (already wired):** a private Kaggle Dataset containing a single
    `hf_token.txt`, attached in each `scripts/kaggle/kernel-metadata.*.json`
-   under `dataset_sources` (e.g. `your-kaggle-username/hf-token`).
+   under `dataset_sources` (e.g. `kaustubhcrathi/hf-token`; per-account list in `scripts/kaggle/README.md`).
 3. `mr_mt.secrets.get_hf_token()` resolves the token in this order: `HF_TOKEN` env →
    Kaggle Secret → `/kaggle/input/**/hf_token.txt` → gitignored `.env`.
    It is exported as `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` in

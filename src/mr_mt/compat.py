@@ -14,7 +14,10 @@ before torch/transformers are loaded.
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+_logger = logging.getLogger(__name__)
 
 # Deprecated/renamed keyword -> the name current releases accept.
 #   evaluation_strategy -> eval_strategy            (transformers >= 4.46)
@@ -66,6 +69,15 @@ def supported_kwargs(
     mapping = dict(ALIASES)
     if aliases:
         mapping.update(aliases)
+    # Reverse mapping (new name -> old name) so new-spelling kwargs degrade
+    # gracefully on an old stack (e.g. ``processing_class`` -> ``tokenizer``,
+    # ``eval_strategy`` -> ``evaluation_strategy``) instead of being dropped.
+    # Only added where safe: the reverse target must not itself be a key in
+    # ``mapping`` (i.e. it is genuinely the "other" spelling).
+    reverse: Dict[str, str] = {}
+    for _old, _new in mapping.items():
+        if _new not in mapping and _new not in reverse:
+            reverse[_new] = _old
 
     kept: Dict[str, Any] = {}
     dropped: List[str] = []
@@ -77,5 +89,15 @@ def supported_kwargs(
         if replacement and replacement in params:
             kept[replacement] = value
             continue
+        fallback = reverse.get(name)
+        if fallback and fallback in params:
+            kept[fallback] = value
+            continue
         dropped.append(name)
+    if dropped:
+        _logger.warning(
+            "supported_kwargs dropped unsupported kwargs for %s: %s",
+            getattr(target, "__name__", target),
+            dropped,
+        )
     return kept, dropped

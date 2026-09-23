@@ -202,9 +202,16 @@ def _required_gated(stack: str) -> list:
     token is chosen by actually probing these; a 401 here is what killed the
     first Session A run.
     """
-    common = [("datasets", "coild-aikosh/Education_v2")]
+    common = [
+        ("datasets", "coild-aikosh/Education_v2"),
+        ("datasets", "ai4bharat/IN22-Gen"),
+        ("datasets", "facebook/flores"),
+    ]
     extra = {
-        "bodhan": [("models", "bodhan-ai/indic-translate")],
+        "bodhan": [
+            ("models", "bodhan-ai/indic-translate"),
+            ("models", "google/gemma-4-E4B-it"),
+        ],
         "indictrans2": [("models", "ai4bharat/indictrans2-indic-indic-dist-320M")],
     }.get(stack, [])
     return common + extra
@@ -319,14 +326,11 @@ def activate(stack: str = "bodhan") -> Path:
         print(
             "[kaggle_env] access check: "
             + ", ".join(
-                f"{repo}="
-                + ("ok" if ok else "BLOCKED" if ok is False else "unknown")
+                f"{repo}=" + ("ok" if ok else "BLOCKED" if ok is False else "unknown")
                 for repo, ok in verdict["results"].items()
             )
         )
-        blocked = [
-            repo for repo, ok in verdict["results"].items() if ok is False
-        ]
+        blocked = [repo for repo, ok in verdict["results"].items() if ok is False]
         if blocked:
             # Fail fast on a DEFINITE 401/403: the run would die at download
             # time anyway, so stop before the 1-3 min pip install. unknown
@@ -348,6 +352,7 @@ def activate(stack: str = "bodhan") -> Path:
     )
     return repo
 
+
 def get_setting(name: str, default: str = "") -> str:
     """Resolve a run-time setting: env var first, then a Kaggle Secret.
 
@@ -362,7 +367,8 @@ def get_setting(name: str, default: str = "") -> str:
     try:  # pragma: no cover - Kaggle-only
         from kaggle_secrets import UserSecretsClient
 
-        return (UserSecretsClient().get_secret(name) or "").strip()
+        secret = (UserSecretsClient().get_secret(name) or "").strip()
+        return secret if secret else default
     except Exception:
         return default
 
@@ -386,7 +392,9 @@ def latest_confirmed_checkpoint(remote: str, binary: str = "rclone") -> Optional
     try:
         proc = _rclone_cmd(binary, "lsf", "--dirs-only", remote, timeout=120)
         if proc.returncode != 0:
-            print(f"[kaggle_env] lsf failed: {proc.stderr.strip()[:300]}", file=sys.stderr)
+            print(
+                f"[kaggle_env] lsf failed: {proc.stderr.strip()[:300]}", file=sys.stderr
+            )
             return None
         steps = []
         for entry in proc.stdout.splitlines():
@@ -394,7 +402,9 @@ def latest_confirmed_checkpoint(remote: str, binary: str = "rclone") -> Optional
             if name.startswith("checkpoint-") and name.rsplit("-", 1)[-1].isdigit():
                 steps.append((int(name.rsplit("-", 1)[-1]), name))
         for _, name in sorted(steps, reverse=True):
-            chk = _rclone_cmd(binary, "lsf", "--files-only", f"{remote}/{name}", timeout=120)
+            chk = _rclone_cmd(
+                binary, "lsf", "--files-only", f"{remote}/{name}", timeout=120
+            )
             if chk.returncode == 0 and "_upload_complete" in chk.stdout:
                 return f"{remote}/{name}"
     except Exception as exc:  # noqa: BLE001 - best effort
@@ -403,7 +413,10 @@ def latest_confirmed_checkpoint(remote: str, binary: str = "rclone") -> Optional
 
 
 def rclone_fetch(
-    remote_dir: str, local_dir: str, includes: Optional[list] = None, binary: str = "rclone"
+    remote_dir: str,
+    local_dir: str,
+    includes: Optional[list] = None,
+    binary: str = "rclone",
 ) -> bool:
     """``rclone copy remote_dir local_dir`` (optionally --include-filtered)."""
     args = ["copy", remote_dir.rstrip("/"), str(local_dir), "--transfers", "8"]
@@ -412,7 +425,10 @@ def rclone_fetch(
     try:
         proc = _rclone_cmd(binary, *args)
         if proc.returncode != 0:
-            print(f"[kaggle_env] fetch failed: {proc.stderr.strip()[:300]}", file=sys.stderr)
+            print(
+                f"[kaggle_env] fetch failed: {proc.stderr.strip()[:300]}",
+                file=sys.stderr,
+            )
             return False
         return True
     except Exception as exc:  # noqa: BLE001 - best effort
@@ -457,4 +473,3 @@ def _cli(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(_cli())
-

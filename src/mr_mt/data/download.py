@@ -30,7 +30,7 @@ import argparse
 from pathlib import Path
 from typing import Dict
 
-from mr_mt.config import load_config
+from mr_mt.config import load_session_config
 from mr_mt.secrets import get_hf_token
 from mr_mt.utils import ensure_dir, write_jsonl
 
@@ -39,6 +39,8 @@ COILD_LICENSE_URL = "https://huggingface.co/datasets/coild-aikosh/Education_v2"
 FALLBACK_REPO_ID = "ai4bharat/samanantar"
 FALLBACK_CONFIG = "mr"
 CANDIDATE_EXTS = {".tsv", ".txt", ".csv"}
+
+__all__ = ["_extract_pair", "download_dataset", "download_benchmarks", "main"]
 
 
 def _find_coild_files(root: Path) -> list:
@@ -58,7 +60,13 @@ def _download_coild(raw_dir: str, dataset_id: str) -> str:
     """Snapshot the gated COILD repo into ``raw_dir``; return ``raw_dir``."""
     from huggingface_hub import snapshot_download
 
-    token = get_hf_token()
+    token = get_hf_token(
+        required=[
+            ("datasets", "coild-aikosh/Education_v2"),
+            ("datasets", "ai4bharat/IN22-Gen"),
+            ("datasets", "facebook/flores"),
+        ]
+    )
     try:
         snapshot_download(
             repo_id=dataset_id,
@@ -189,7 +197,13 @@ def download_benchmarks(cfg: dict) -> Dict[str, str]:
     benchmarks = cfg.get("eval", {}).get("benchmarks", [])
     out_dir = Path("data/raw/benchmarks")
     ensure_dir(out_dir)
-    token = get_hf_token()
+    token = get_hf_token(
+        required=[
+            ("datasets", "coild-aikosh/Education_v2"),
+            ("datasets", "ai4bharat/IN22-Gen"),
+            ("datasets", "facebook/flores"),
+        ]
+    )
     paths: Dict[str, str] = {}
     for bench in benchmarks:
         name = bench["name"]
@@ -230,12 +244,12 @@ def download_benchmarks(cfg: dict) -> Dict[str, str]:
     return paths
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """CLI: download the corpus and benchmarks for ``--config``."""
     parser = argparse.ArgumentParser(description="Download raw MT data and benchmarks.")
     parser.add_argument("--config", default="configs/base.yaml")
-    args = parser.parse_args()
-    cfg = load_config(args.config)
+    args = parser.parse_args(argv)
+    cfg = load_session_config(args.config)
     raw_dir = download_dataset(cfg)
     bench_paths = download_benchmarks(cfg)
     print(f"raw_dir: {raw_dir}")

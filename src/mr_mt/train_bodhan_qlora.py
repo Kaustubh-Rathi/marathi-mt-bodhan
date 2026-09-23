@@ -162,8 +162,8 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
 
     from transformers import BitsAndBytesConfig
 
-    token = get_hf_token()
     model_name = cfg["model"]["name"]
+    token = get_hf_token(required=[("models", model_name)])
     trust_remote_code = bool(cfg["model"].get("trust_remote_code", True))
     bnb_cfg = cfg["model"].get("bnb", {})
     quant_config = BitsAndBytesConfig(
@@ -309,7 +309,7 @@ def _warmup_value(t: dict):
     return float(t.get("warmup_ratio", 0.03))
 
 
-def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
+def build_trainer(cfg: dict, model, tokenizer, train_dataset=None, processor=None):
     """Build the TRL 1.6.0 :class:`~trl.SFTTrainer` for QLoRA SFT.
 
     Args:
@@ -319,6 +319,10 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         train_dataset: Optional pre-formatted conversational
             ``datasets.Dataset`` with a ``messages`` column. When
             ``None``, it is loaded from ``cfg["data"]["train_file"]``.
+        processor: Optional ``AutoProcessor``. When available, its
+            ``tokenizer`` is used as the trainer ``processing_class`` so
+            train and eval (``evaluate.py`` uses the ``AutoProcessor``
+            for generation) share the SAME processing object.
 
     Returns:
         Configured :class:`~trl.SFTTrainer` (not yet trained).
@@ -351,7 +355,9 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         gradient_accumulation_steps=int(t.get("gradient_accumulation_steps", 16)),
         learning_rate=float(t.get("learning_rate", 1.0e-4)),
         lr_scheduler_type=t.get("lr_scheduler_type", "cosine"),
-        warmup_steps=_warmup_value(t),  # 5.x: float <1.0 = ratio (warmup_ratio is deprecated)
+        warmup_steps=_warmup_value(
+            t
+        ),  # 5.x: float <1.0 = ratio (warmup_ratio is deprecated)
         max_steps=int(t.get("max_steps", 1000)),
         num_train_epochs=t.get("num_train_epochs", 0),
         save_steps=int(t.get("save_steps", 100)),
@@ -374,7 +380,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         push_to_hub=bool(hub.get("push_to_hub", False)),
         hub_model_id=hub.get("repo_id") or None,
         hub_strategy=hub.get("strategy", "all_checkpoints"),
-        hub_token=get_hf_token(),
+        hub_token=get_hf_token(required=[("models", cfg["model"]["name"])]),
         hub_private_repo=bool(hub.get("private", True)),
         max_length=int(t.get("max_seq_length", 1024)),
         packing=bool(t.get("packing", False)),
@@ -402,6 +408,27 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         )
     args = SFTConfig(**sft_kwargs)
     callback = build_mirror_callback(cfg)
+    # Train and eval must share the SAME processing object: evaluate.py
+    # generates with the AutoProcessor, so prefer the processor's tokenizer
+    # here instead of the bare AutoTokenizer.
+    processing_tok = getattr(processor, "tokenizer", None) or tokenizer
+    if processor is not None:
+        try:
+            proc_tok = getattr(processor, "tokenizer", None)
+            if (
+                proc_tok is not None
+                and proc_tok is not tokenizer
+                and getattr(proc_tok, "chat_template", None)
+                != getattr(tokenizer, "chat_template", None)
+            ):
+                print(
+                    "WARNING: processor.tokenizer.chat_template differs from "
+                    "tokenizer.chat_template; using processor.tokenizer so "
+                    "train/eval share the same processing object.",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass
     trainer_kwargs, trainer_dropped = supported_kwargs(
         SFTTrainer,
         {
@@ -409,7 +436,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
             "args": args,
             "train_dataset": train_dataset,
             "eval_dataset": eval_dataset,
-            "processing_class": tokenizer,
+            "processing_class": processing_tok,
             "peft_config": build_lora(cfg),
             "callbacks": [callback],
         },
@@ -508,7 +535,7 @@ def main(argv=None):
                 file=sys.stderr,
             )
 
-    trainer = build_trainer(cfg, model, tokenizer)
+    trainer = build_trainer(cfg, model, tokenizer, processor=processor)
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
     # Save adapter + tokenizer/processor under <output_dir>/adapter.

@@ -2,7 +2,7 @@
 
 Sessions: **A** = Bodhan 8B QLoRA (Acct1, primary) · **B** = IndicTrans2
 indic-indic-dist-320M LoRA (Acct2, fallback) · **C** = ablation/demo (Acct3). Config: `configs/base.yaml`
-(session configs inherit via `mr_mt.config.load_base_and_session` and override `run.name`,
+(session configs inherit via `mr_mt.config.load_session_config` and override `run.name`,
 `output_dir`, `hub.repo_id`).
 
 ## Session A — Bodhan 8B QLoRA (primary)

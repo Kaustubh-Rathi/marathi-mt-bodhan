@@ -34,6 +34,12 @@ adapter = kaggle_env.get_setting("MR_MT_ADAPTER")
 if not adapter:
     from mr_mt.config import load_base_and_session  # noqa: E402
 
+    if FAMILY not in {"bodhan", "indictrans2"}:
+        print(
+            f"ERROR: unknown MR_MT_FAMILY={FAMILY!r}; expected 'bodhan' or 'indictrans2'.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     session_cfg = {
         "bodhan": "configs/sessionA_bodhan_qlora.yaml",
         "indictrans2": "configs/sessionB_indictrans2_lora.yaml",
@@ -64,7 +70,9 @@ if not adapter:
         raise SystemExit(f"Adapter fetch failed from {latest}")
     adapter = dest
 
-config = kaggle_env.get_setting("MR_MT_CONFIG", "configs/base.yaml") or "configs/base.yaml"
+config = (
+    kaggle_env.get_setting("MR_MT_CONFIG", "configs/base.yaml") or "configs/base.yaml"
+)
 
 from mr_mt.evaluate import main  # noqa: E402
 

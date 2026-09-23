@@ -17,8 +17,12 @@ Uploads run in the BACKGROUND (``subprocess.Popen``) so the training loop never
 stalls on network I/O; finished uploads are reaped on the next save and all
 remaining uploads are awaited at ``on_train_end``. A ``_upload_complete``
 marker file is touched in the remote dir of every verified upload, so after a
-12h kill you resume from the highest remote checkpoint that has the marker
-(a kill mid-upload can leave a torn directory without the marker).
+12h kill you manually resume from the highest remote checkpoint that has the
+marker (see :func:`find_latest_remote_checkpoint`; a kill mid-upload can
+leave a torn directory without the marker). Resume is never automatic from
+this module — pass the path explicitly via ``--resume_from_checkpoint``.
+Note: a SIGKILL can lose the last 1-2 in-flight checkpoints whose uploads or
+marker touches never finished.
 
 Local disk is bounded by ``keep_local`` (default 2): once a full checkpoint's
 upload is confirmed, older local copies beyond the newest ``keep_local`` are
@@ -96,13 +100,17 @@ def _rclone_start(local_dir: Path, remote: str, binary: str = "rclone"):
     """Start a background ``rclone copy``; return the Popen handle or None.
 
     Never raises. The caller reaps the process via :meth:`_reap`.
+
+    Both stdout and stderr go to DEVNULL: capturing stderr to a pipe and then
+    ``poll()`` + ``read()`` can deadlock once rclone writes more than the
+    ~64KiB OS pipe buffer, hanging the training loop on a verbose error.
     """
+
     try:
         proc = subprocess.Popen(  # noqa: S603 - controlled args
             [binary, "copy", str(local_dir), remote, "--transfers", "4"],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
+            stderr=subprocess.DEVNULL,
         )
         print(f"[checkpointing] upload started: {local_dir.name} -> {remote}")
         return proc
@@ -112,16 +120,110 @@ def _rclone_start(local_dir: Path, remote: str, binary: str = "rclone"):
 
 
 def _rclone_touch_marker(remote_dir: str, binary: str) -> None:
-    """Best-effort ``rclone touch <remote_dir>/_upload_complete`` (fast, sync)."""
+    """Best-effort ``rclone touch <remote_dir>/_upload_complete`` (fast, sync).
+
+    Checks the return code and retries once so a successful upload whose
+    marker touch failed transiently does not look torn on resume. Never
+    raises into the training loop.
+    """
+    target = f"{remote_dir.rstrip('/')}/_upload_complete"
+    for attempt in (1, 2):
+        try:
+            proc = subprocess.run(  # noqa: S603 - controlled args
+                [binary, "touch", target],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except Exception as exc:  # noqa: BLE001 - marker is advisory only
+            print(
+                f"[checkpointing] marker touch attempt {attempt}/2 failed "
+                f"for {target} ({exc}).",
+                file=sys.stderr,
+            )
+            continue
+        if proc.returncode == 0:
+            return
+        err = (proc.stderr or "").strip()[:300]
+        print(
+            f"[checkpointing] marker touch attempt {attempt}/2 failed "
+            f"for {target} (rc={proc.returncode}): {err}",
+            file=sys.stderr,
+        )
+    print(
+        f"[checkpointing] marker touch FAILED for {target} after 2 attempts; "
+        "the upload succeeded but resume will treat this checkpoint as "
+        "torn (no _upload_complete).",
+        file=sys.stderr,
+    )
+
+
+def find_latest_remote_checkpoint(
+    rclone_binary: str, rclone_remote: str, timeout: int = 120
+) -> Optional[int]:
+    """Return the highest remote checkpoint step with an ``_upload_complete`` marker.
+
+    Lists ``checkpoint-*`` dirs under ``rclone_remote`` via
+    ``rclone lsf --dirs-only`` and, highest step first, keeps the first one
+    whose ``rclone lsf --files-only`` listing contains ``_upload_complete``.
+    Returns ``None`` on any failure (missing binary, empty remote, no marked
+    checkpoint). Best-effort: never raises. Not wired into argparse — callers
+    resolve the step manually and pass it via ``--resume_from_checkpoint``.
+    """
+    remote = (rclone_remote or "").rstrip("/")
+    binary = rclone_binary or "rclone"
+    if not remote:
+        return None
+    if shutil.which(binary) is None:
+        print(
+            f"[checkpointing] cannot discover remote checkpoints: "
+            f"rclone binary '{binary}' not found.",
+            file=sys.stderr,
+        )
+        return None
     try:
-        subprocess.run(  # noqa: S603 - controlled args
-            [binary, "touch", f"{remote_dir.rstrip('/')}/_upload_complete"],
+        proc = subprocess.run(  # noqa: S603 - controlled args
+            [binary, "lsf", "--dirs-only", remote],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout,
         )
-    except Exception:  # noqa: BLE001 - marker is advisory only
-        pass
+    except Exception as exc:  # noqa: BLE001 - best effort
+        print(
+            f"[checkpointing] remote checkpoint discovery failed ({exc}).",
+            file=sys.stderr,
+        )
+        return None
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()[:300]
+        print(
+            f"[checkpointing] remote checkpoint listing failed "
+            f"(rc={proc.returncode}): {err}",
+            file=sys.stderr,
+        )
+        return None
+    steps: list[tuple[int, str]] = []
+    for entry in (proc.stdout or "").splitlines():
+        name = entry.strip().rstrip("/")
+        if name.startswith("checkpoint-") and name.rsplit("-", 1)[-1].isdigit():
+            steps.append((int(name.rsplit("-", 1)[-1]), name))
+    for _, name in sorted(steps, reverse=True):
+        try:
+            chk = subprocess.run(  # noqa: S603 - controlled args
+                [binary, "lsf", "--files-only", f"{remote}/{name}"],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 - best effort
+            print(
+                f"[checkpointing] marker check failed for {name} ({exc}).",
+                file=sys.stderr,
+            )
+            continue
+        if chk.returncode == 0 and "_upload_complete" in (chk.stdout or ""):
+            return int(name.rsplit("-", 1)[-1])
+    return None
 
 
 class CheckpointMirrorCallback(TrainerCallback):
@@ -196,14 +298,10 @@ class CheckpointMirrorCallback(TrainerCallback):
                 print(f"[checkpointing] upload done: checkpoint-{job['step']}")
                 _rclone_touch_marker(job["remote"], self.rclone_binary)
             else:
-                err = ""
-                try:
-                    err = (proc.stderr.read() or "").strip()[:500]
-                except Exception:  # noqa: BLE001
-                    pass
                 print(
                     f"[checkpointing] upload FAILED for checkpoint-{job['step']} "
-                    f"(rc={rc}): {err}",
+                    f"(rc={rc}): see rclone logs; stderr is discarded "
+                    "(DEVNULL) to avoid pipe deadlock.",
                     file=sys.stderr,
                 )
         self._pending = still
