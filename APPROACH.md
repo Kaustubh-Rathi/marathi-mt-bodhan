@@ -43,7 +43,8 @@
 
 - Single account = 30h/week, one failure kills the story.
 - **Chosen: 3 sessions/accounts** — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2-200M fallback
-  (Acct2), C = ablation/demo (Acct3). Each resumes via HF Hub every 100 steps, so a 12h
+  (Acct2), C = ablation/demo (Acct3). Each keeps every checkpoint (every 100 steps) and
+  syncs them to Drive, so a 12h
   session timeout costs at most one checkpoint interval. Ethical note: three genuine
   separate accounts used within stated quotas; no quota circumvention beyond documented limits.
 
@@ -91,7 +92,7 @@ Values from `configs/base.yaml`:
 | LR 1e-4, `cosine_with_min_lr` (`min_lr_rate` 0.1), warmup 0.03 | — | Arushhh recipe: 1e-4 is the QLoRA sweet spot (1e-5 underfits, 3e-4 diverges on 8k); min-LR floor avoids late collapse; 3% warmup covers scheduler init |
 | `max_seq_length` 1024, packing off, `assistant_only_loss` | — | Education pairs fit 1024; packing off keeps src/tgt alignment auditable; loss on assistant span only |
 | Batch 1 × accum 16 (eff. 16), `paged_adamw_8bit`, wd 0.01, clip 1.0 | — | Single-GPU fit with stable effective batch; paged optimizer survives T4 spikes |
-| `max_steps` 1000, save/eval every 100, logging 10 | — | Fits 12h session with resume every ≤100 steps via Hub |
+| `max_steps` 1000, save/eval every 100, logging 10 | — | All checkpoints kept (Drive-synced); fits 12h session with ≤100-step granularity |
 | bf16 (+ P100 fallback note) | `bf16: true` | T4 bf16 OK; P100 lacks bf16/FA2 — use fp16 path (see `docs/SETUP.md`) |
 | Gradient checkpointing on, `remove_unused_columns=False` | — | VRAM fit + required so multimodal columns survive collation |
 | Seed 42 | — | Deterministic splits + shuffles |
@@ -136,7 +137,7 @@ Fallback (Session B) deltas: `SEQ_2_SEQ_LM` LoRA on `q_proj,k_proj` only,
 | 1 | 8B doesn't fit Kaggle VRAM full-finetune | 4-bit NF4 QLoRA, batch 1×16, grad checkpointing, seq 1024 |
 | 2 | Gemma-4 PEFT crash on targeted `q_proj` lists | all-linear + exclude list (recipe-mandated) |
 | 3 | `transformers` version split (A needs ≥5.5.2, B needs <5) | Two envs; `requirements.txt` pins A/C, comments pin B |
-| 4 | 12h session timeouts | Hub push every 100 steps; resume-from-checkpoint flow (`docs/TRAINING.md`) |
+| 4 | 12h session timeouts | All checkpoints kept + Drive sync (live rclone / Hub optional); resume-from-checkpoint flow (`docs/TRAINING.md`) |
 | 5 | P100 lacks bf16/FA2 | fp16 fallback path; T4 preferred for Session A |
 | 6 | Leakage risk (BPCC-adjacent data) | Education_v2 choice + L1..L10 checklist + normalize-before-score |
 | 7 | No hosted tracking | TensorBoard per cell + `reports/experiments.csv` index + Drive sync |

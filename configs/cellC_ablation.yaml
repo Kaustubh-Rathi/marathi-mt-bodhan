@@ -37,5 +37,5 @@ hub:
 
 checkpointing:
   mirror_dir: /kaggle/working/cellC/checkpoint_mirror
-  adapter_only_copy: true
+  adapter_only_copy: false
   rclone_remote: ""

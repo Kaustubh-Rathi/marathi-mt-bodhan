@@ -77,9 +77,11 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `TBLogger` thin wrapper; `append_run(run: dict, path="reports/experiments.csv")`.
 
 ### mr_mt/checkpointing.py
-- `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote, rclone_binary, rclone_dest)` —
-  TrainerCallback `on_save` writes an adapter-only copy of each `checkpoint-<step>`
-  under `mirror_dir` and best-effort `rclone copy`s it when a remote is set.
+- `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote, rclone_binary)` —
+  TrainerCallback `on_save`: with `adapter_only_copy: true` it writes an
+  adapter-only copy of each `checkpoint-<step>` under `mirror_dir` and rclones it;
+  with `false` it rclones the full checkpoint dir directly (no local duplicate).
+  Best-effort: failures never abort training.
 - `build_mirror_callback(cfg) -> CheckpointMirrorCallback` from `cfg["checkpointing"]`.
 
 ### scripts/kaggle/ (Kaggle script kernels, not notebooks)

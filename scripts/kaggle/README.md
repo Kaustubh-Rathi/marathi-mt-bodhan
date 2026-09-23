@@ -63,10 +63,13 @@ pushing.
 
 ## Checkpoints
 
-Training keeps **all** checkpoints (`save_total_limit: null`) and mirrors an
-adapter-only copy of each into `checkpointing.mirror_dir`. To also stream them
-to Drive from inside the kernel, set `checkpointing.rclone_remote` in the cell
-config and mount OAuth rclone creds as a private Dataset (`gdrive-creds`);
-`bootstrap._configure_rclone()` wires `RCLONE_CONFIG*` automatically. The
-authoritative Drive copy still comes from `scripts/sync_drive.ps1` after
-`kaggle kernels output`.
+Training keeps **all** full checkpoints (`save_total_limit: null`,
+`save_only_model: false`) in the run's `output_dir`; the authoritative Drive copy
+comes from `scripts/pull_kaggle_output.ps1` -> `scripts/sync_drive.ps1`.
+
+For timeout resilience, set `checkpointing.rclone_remote` in the cell config and
+mount rclone + OAuth creds as a private Dataset (`gdrive-creds`);
+`bootstrap._configure_rclone()` wires `RCLONE_CONFIG*` automatically. Set
+`checkpointing.adapter_only_copy: true` to mirror small adapter-only copies
+instead of the full checkpoints. HF Hub push is optional and off by default
+(`hub.push_to_hub`, real `hub.repo_id`, write-role token).

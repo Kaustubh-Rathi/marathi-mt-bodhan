@@ -75,12 +75,14 @@ hub:
   private: true
 
 checkpointing:
-  # Adapter-only copy of every checkpoint, written here and (optionally) rcloned
-  # to persistent storage. Hub push (hub.strategy: all_checkpoints) is the
-  # primary resumeable path; this is the Drive mirror for the deliverable.
+  # Full (resumeable) checkpoints are kept in output_dir and copied to Drive by
+  # the post-run sync (scripts/pull_kaggle_output.ps1 -> scripts/sync_drive.ps1).
+  # Set adapter_only_copy: true to instead mirror small adapter-only copies.
+  # Set rclone_remote (e.g. gdrive:mr-mt-edu-2026/<run>/checkpoints) to stream
+  # each checkpoint to Drive live (requires rclone + creds on the Kaggle VM).
   mirror_dir: /kaggle/working/run/checkpoint_mirror
-  adapter_only_copy: true
-  rclone_remote: ""     # e.g. gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints (empty = local only)
+  adapter_only_copy: false
+  rclone_remote: ""
   rclone_binary: rclone
 
 prepare:

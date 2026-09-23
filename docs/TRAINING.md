@@ -74,23 +74,24 @@ under `output_dir`; the default is `None` = fresh start).
 ## Checkpoint persistence (keep every checkpoint)
 
 `/kaggle/working` is ephemeral and only saved on a successful run, so checkpoints
-are pushed off the VM as they are written:
+must be copied off the VM:
 
-1. **HF Hub (primary, resumeable):** set `hub.push_to_hub: true` + a real
-   `hub.repo_id` in the cell config; `hub.strategy: all_checkpoints` streams every
-   checkpoint. A **write-role** `HF_TOKEN` is required to push.
-2. **Adapter-only mirror + optional live rclone:** `CheckpointMirrorCallback`
-   (`src/mr_mt/checkpointing.py`) copies adapter weights/config/tokenizer/
-   `trainer_state.json` for each checkpoint into `checkpointing.mirror_dir`, and if
-   `checkpointing.rclone_remote` is set (e.g.
-   `gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints`) runs `rclone copy` for it.
-   Mount rclone creds via a private `gdrive-creds` Kaggle Dataset (see
-   `scripts/kaggle/bootstrap.py::_configure_rclone`).
-3. **Post-run Drive sync (authoritative):** `scripts/pull_kaggle_output.ps1` →
-   `scripts/sync_drive.ps1` copies the full tree to `gdrive:mr-mt-edu-2026/<run>/`.
+1. **Drive (authoritative):** full checkpoints are written to the run's
+   `output_dir`; `scripts/pull_kaggle_output.ps1` → `scripts/sync_drive.ps1` copies
+   the whole tree to `gdrive:mr-mt-edu-2026/<run>/`. Default
+   `checkpointing.adapter_only_copy: false` keeps the **full** (resumeable)
+   checkpoints.
+2. **Live Drive mirror (optional, timeout-proof):** set
+   `checkpointing.rclone_remote` (e.g. `gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints`)
+   and mount rclone + creds; `CheckpointMirrorCallback` then `rclone copy`s each
+   `checkpoint-<step>` during training. With `adapter_only_copy: true` it mirrors
+   small adapter-only copies instead of the full checkpoints.
+3. **HF Hub (optional, off by default):** set `hub.push_to_hub: true` + a real
+   `hub.repo_id` + a **write-role** token; `hub.strategy: all_checkpoints` streams
+   every checkpoint for cross-session resume.
 
-> With `push_to_hub: false` and no rclone, nothing leaves the VM mid-run: a 12h
-> timeout loses all progress. Enable at least one of the two.
+> The shipped cell configs have `push_to_hub: false` and `rclone_remote: ""`, so the
+> guaranteed Drive path is (1). Enable (2) or (3) if you need timeout resilience.
 
 ## What to monitor
 

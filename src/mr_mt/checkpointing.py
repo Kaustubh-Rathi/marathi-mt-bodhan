@@ -1,27 +1,24 @@
-"""Checkpoint persistence: mirror each saved checkpoint for the Drive deliverable.
+"""Checkpoint persistence: get every checkpoint off the ephemeral Kaggle VM.
 
-Kaggle VMs are ephemeral (12h cap, 20GB ``/kaggle/working``) and only persist on
-a *successful* run, so every checkpoint must be copied off the VM as it is
-written. This module provides a best-effort TrainerCallback that:
+Kaggle VMs are ephemeral (12h cap, ~20GB ``/kaggle/working``) and only persist on
+a *successful* run, so checkpoints must be copied off the VM as they are written.
 
-1. writes an **adapter-only** copy (adapter weights + config + tokenizer +
-   ``trainer_state.json``) of every ``checkpoint-<step>`` into a mirror dir, and
-2. optionally runs ``rclone copy`` of that checkpoint to a remote
-   (e.g. ``gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints``).
+Behaviour is controlled by ``configs/base.yaml`` -> ``checkpointing``:
 
-HuggingFace Hub streaming (``push_to_hub=True`` + ``hub_strategy="all_checkpoints"``)
-is the primary, resumeable path; this callback is the Drive mirror and the
-adapter-only retention copy. Everything is best-effort: failures are logged and
-never abort training.
+* ``adapter_only_copy: true`` (default): write a small **adapter-only** copy of
+  each ``checkpoint-<step>`` under ``mirror_dir`` (for the Drive deliverable) and
+  optionally ``rclone`` that copy to ``rclone_remote``.
+* ``adapter_only_copy: false``: keep the **full** checkpoint (adapter + optimizer
+  + scheduler + RNG, i.e. resumeable) and ``rclone`` the checkpoint directory
+  directly — no local duplicate is made (avoids doubling ``/kaggle/working``).
 
-Config (``configs/base.yaml`` -> ``checkpointing``)::
+If ``rclone_remote`` is empty, the mirror keeps files on the VM only and the
+post-run flow (`scripts/pull_kaggle_output.ps1` -> `scripts/sync_drive.ps1`)
+copies the whole run tree to Drive. Everything is best-effort: a failure is
+logged and never aborts training.
 
-    checkpointing:
-      mirror_dir: /kaggle/working/checkpoint_mirror
-      adapter_only_copy: true
-      rclone_remote: ""          # empty = no rclone; local mirror only
-      rclone_binary: rclone
-      rclone_dest: ""            # e.g. gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints
+HuggingFace Hub streaming is optional and only active when a cell config sets
+``hub.push_to_hub: true`` with a real ``hub.repo_id`` and a write-role token.
 """
 
 from __future__ import annotations
@@ -119,27 +116,43 @@ class CheckpointMirrorCallback(TrainerCallback):
 
     def on_save(self, args, state, control, **kwargs):  # noqa: D102
         step = getattr(state, "global_step", None)
-        if step is None or not self.mirror_dir:
+        if step is None:
             return control
         src_ckpt = Path(args.output_dir) / f"checkpoint-{step}"
         if not src_ckpt.is_dir():
             return control
         try:
-            dst_ckpt = Path(self.mirror_dir) / f"checkpoint-{step}"
             if self.adapter_only_copy:
+                # Small adapter-only copy for the Drive deliverable.
+                if not self.mirror_dir:
+                    return control
+                dst_ckpt = Path(self.mirror_dir) / f"checkpoint-{step}"
                 _copy_adapter_only(src_ckpt, dst_ckpt)
+                print(f"[checkpointing] mirrored checkpoint-{step} -> {dst_ckpt}")
+                if self.rclone_remote:
+                    _rclone_copy(
+                        dst_ckpt,
+                        f"{self.rclone_remote.rstrip('/')}/checkpoint-{step}",
+                        self.rclone_binary,
+                    )
             else:
-                shutil.copytree(src_ckpt, dst_ckpt, dirs_exist_ok=True)
-            print(f"[checkpointing] mirrored checkpoint-{step} -> {dst_ckpt}")
-            if self.rclone_remote:
-                _rclone_copy(
-                    dst_ckpt,
-                    f"{self.rclone_remote.rstrip('/')}/checkpoint-{step}",
-                    self.rclone_binary,
-                )
+                # Full (resumeable) checkpoint: rclone the checkpoint dir directly
+                # so we do NOT duplicate it on the VM. Without rclone_remote the
+                # checkpoint stays in output_dir and the post-run sync copies it.
+                if self.rclone_remote:
+                    _rclone_copy(
+                        src_ckpt,
+                        f"{self.rclone_remote.rstrip('/')}/checkpoint-{step}",
+                        self.rclone_binary,
+                    )
+                else:
+                    print(
+                        f"[checkpointing] checkpoint-{step} kept in "
+                        f"{src_ckpt} (no rclone_remote; post-run sync will copy it)"
+                    )
         except Exception as exc:  # noqa: BLE001 - never abort training
             print(
-                f"[checkpointing] mirror failed for step {step} ({exc}).",
+                f"[checkpointing] persist failed for step {step} ({exc}).",
                 file=sys.stderr,
             )
         return control
