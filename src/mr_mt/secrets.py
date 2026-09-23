@@ -187,20 +187,36 @@ def hf_token_can_access(
     saw_denied = False
     for filename in _PROBE_FILES:
         url = f"https://huggingface.co/{repo_type}/{repo_id}/resolve/main/{filename}"
-        req = urllib.request.Request(  # noqa: S310 - fixed HTTPS host
-            url, headers={"Authorization": f"Bearer {token}"}, method="HEAD"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                if 200 <= resp.status < 300:
-                    return True
-        except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
-                saw_denied = True
-            continue
-        except Exception:
-            continue
+        status = _probe_status(url, token, "HEAD", timeout)
+        if status is None:
+            # Some CDNs/egress paths mishandle HEAD; retry a 1-byte GET.
+            status = _probe_status(url, token, "GET", timeout)
+        if status == "ok":
+            return True
+        if status == "denied":
+            saw_denied = True
     return False if saw_denied else None
+
+
+def _probe_status(url: str, token: str, method: str, timeout: int) -> Optional[str]:
+    """Return ``"ok"`` / ``"denied"`` / ``None`` for one probe request."""
+    headers = {"Authorization": f"Bearer {token}"}
+    if method == "GET":
+        headers["Range"] = "bytes=0-0"
+    req = urllib.request.Request(  # noqa: S310 - fixed HTTPS host
+        url, headers=headers, method=method
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if 200 <= resp.status < 300:
+                return "ok"
+            return None
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return "denied"
+        return None
+    except Exception:
+        return None
 
 
 def select_hf_token(

@@ -267,6 +267,7 @@ class ProbeSemanticsTest(unittest.TestCase):
         self.assertEqual(probe.call_count, 2)
 
     def test_404_falls_through_to_next_filename(self) -> None:
+        # HEAD 404 -> transient, retried as GET; the GET then succeeds.
         with mock.patch(
             "urllib.request.urlopen", side_effect=[_http_error(404), _Resp(200)]
         ) as probe:
@@ -276,10 +277,10 @@ class ProbeSemanticsTest(unittest.TestCase):
     def test_all_404_is_undecidable_not_failure(self) -> None:
         with mock.patch(
             "urllib.request.urlopen",
-            side_effect=[_http_error(404)] * len(secrets._PROBE_FILES),
+            side_effect=[_http_error(404)] * (2 * len(secrets._PROBE_FILES)),
         ) as probe:
             self.assertIsNone(secrets.hf_token_can_access("t", "models", "x/y"))
-        self.assertEqual(probe.call_count, len(secrets._PROBE_FILES))
+        self.assertEqual(probe.call_count, 2 * len(secrets._PROBE_FILES))
 
     def test_network_error_is_undecidable_not_failure(self) -> None:
         with mock.patch(
@@ -288,7 +289,7 @@ class ProbeSemanticsTest(unittest.TestCase):
             self.assertIsNone(secrets.hf_token_can_access("t", "models", "x/y"))
         self.assertEqual(
             probe.call_count,
-            len(secrets._PROBE_FILES),
+            2 * len(secrets._PROBE_FILES),
             "offline box must not reject every candidate",
         )
 
