@@ -1,18 +1,18 @@
-# Session B — fallback: IndicTrans2 LoRA (hin_Deva -> mar_Deva).
+# Session B — fallback: IndicTrans2 LoRA (eng_Latn -> mar_Deva).
 # Deep-merged on top of configs/base.yaml via mr_mt.config.load_base_and_session.
 # Session B runs on a SEPARATE env from Session A (see requirements.txt):
 # transformers>=4.33.2,<5 + IndicTransToolkit==1.1.1, because the IndicTrans2
 # huggingface_interface is incompatible with transformers>=5.
-# Uses the Indic<->Indic distilled checkpoint
-# (indictrans2-indic-indic-dist-320M): the en-indic model is English-SOURCE
-# only and cannot encode hin_Deva source text.
+# Uses the En-Indic distilled checkpoint (indictrans2-en-indic-dist-200M):
+# training direction is English -> Marathi. NOTE: this repo is gated ('auto') —
+# accept its conditions once with the HF_TOKEN account before running.
 
 run:
   name: sessionB_indictrans2_lora
   output_dir: /kaggle/working/sessionB
 
 model:
-  name: ai4bharat/indictrans2-indic-indic-dist-320M
+  name: ai4bharat/indictrans2-en-indic-dist-200M
   trust_remote_code: true
   load_in_4bit: false
 

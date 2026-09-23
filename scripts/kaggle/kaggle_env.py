@@ -203,7 +203,7 @@ def _required_gated(stack: str) -> list:
     first Session A run.
     """
     common = [
-        ("datasets", "coild-aikosh/Education_v2"),
+        ("datasets", "ai4bharat/samanantar"),
         ("datasets", "ai4bharat/IN22-Gen"),
         ("datasets", "facebook/flores"),
     ]
@@ -212,7 +212,7 @@ def _required_gated(stack: str) -> list:
             ("models", "bodhan-ai/indic-translate"),
             ("models", "google/gemma-4-E4B-it"),
         ],
-        "indictrans2": [("models", "ai4bharat/indictrans2-indic-indic-dist-320M")],
+        "indictrans2": [("models", "ai4bharat/indictrans2-en-indic-dist-200M")],
     }.get(stack, [])
     return common + extra
 

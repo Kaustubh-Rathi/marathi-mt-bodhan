@@ -169,7 +169,7 @@ def iter_hf_tokens() -> Iterator[Tuple[str, str]]:
 
 # Filenames that exist in essentially every HF repo; the probe tries them in
 # order so a 404 on one (repo layout differs) does not mask a real 401/403.
-_PROBE_FILES = ("README.md", "config.json", ".gitattributes")
+_PROBE_FILES = (".gitattributes", "config.json")
 
 
 def hf_token_can_access(

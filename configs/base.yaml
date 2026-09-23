@@ -64,9 +64,9 @@ data:
   train_file: data/processed/train.jsonl
   dev_file: data/processed/dev.jsonl
   test_file: data/processed/test.jsonl
-  source_lang: hin_Deva
+  source_lang: eng_Latn
   target_lang: mar_Deva
-  source_lang_name: Hindi
+  source_lang_name: English
   target_lang_name: Marathi
   prompt_template: "Translate the following {src_lang_name} text to {tgt_lang_name}:\n{src}"
 
@@ -95,10 +95,10 @@ checkpointing:
   max_pending: 2
 
 prepare:
-  dataset: coild-aikosh/Education_v2
-  hf_dataset_config: null
-  direction: hin_Deva->mar_Deva
-  raw_dir: data/raw/coild
+  dataset: ai4bharat/samanantar
+  hf_dataset_config: mr
+  direction: eng_Latn->mar_Deva
+  raw_dir: data/raw/samanantar
   max_train: 8000
   max_dev: 1000
   min_words: 1
@@ -112,23 +112,21 @@ eval:
   num_beams: 5
   batch_size: 8
   benchmarks:
-    # VERIFIED via HF API (2026-09): ai4bharat/IN22-Gen has exactly ONE config
-    # ('default', pass null) and ONE split ('test'). There is NO 'gen' split
-    # and NO 'hin_Deva-mar_Deva' config — those crash load_dataset.
+    # VERIFIED via HF datasets-server (2026-09): ai4bharat/IN22-Gen has ONE
+    # config ('default', pass null) and ONE split ('test'); the 'default'
+    # config carries sentence_<lang> columns for all 22 languages.
     - name: in22_gen
       dataset: ai4bharat/IN22-Gen
       config: null
       split: test
-      src_lang: hin_Deva
+      src_lang: eng_Latn
       tgt_lang: mar_Deva
-    # VERIFIED via HF API (2026-09): facebook/flores configs are per-language
-    # (e.g. 'hin_Deva') and 'all'; the 'all' config carries sentence_<lang>
-    # columns for every language, which _extract_pair reads directly.
-    # NOTE: flores is gated ('auto') — accept its conditions on the HF site
-    # with the HF_TOKEN account before running eval.
+    # VERIFIED via HF datasets-server (2026-09): facebook/flores has a
+    # hyphenated 'eng_Latn-mar_Deva' pairing config with dev/devtest splits.
+    # flores is gated ('auto') — accept its conditions with the token account.
     - name: flores_devtest
       dataset: facebook/flores
-      config: all
+      config: eng_Latn-mar_Deva
       split: devtest
-      src_lang: hin_Deva
+      src_lang: eng_Latn
       tgt_lang: mar_Deva

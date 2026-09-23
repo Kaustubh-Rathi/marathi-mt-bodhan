@@ -304,7 +304,7 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
 
     def test_required_gated_stacks(self) -> None:
         common = [
-            ("datasets", "coild-aikosh/Education_v2"),
+            ("datasets", "ai4bharat/samanantar"),
             ("datasets", "ai4bharat/IN22-Gen"),
             ("datasets", "facebook/flores"),
         ]
@@ -318,15 +318,15 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
         )
         self.assertEqual(
             kaggle_env._required_gated("indictrans2"),
-            common + [("models", "ai4bharat/indictrans2-indic-indic-dist-320M")],
+            common + [("models", "ai4bharat/indictrans2-en-indic-dist-200M")],
         )
         self.assertEqual(kaggle_env._required_gated("eval"), common)
 
     def test_verify_hf_access_with_provided_token(self) -> None:
         verdicts = {
-            ("datasets", "coild-aikosh/Education_v2"): False,
+            ("datasets", "ai4bharat/samanantar"): True,
             ("datasets", "ai4bharat/IN22-Gen"): True,
-            ("datasets", "facebook/flores"): True,
+            ("datasets", "facebook/flores"): False,
             ("models", "bodhan-ai/indic-translate"): True,
             ("models", "google/gemma-4-E4B-it"): True,
         }
@@ -337,7 +337,7 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
         ):
             out = kaggle_env.verify_hf_access("bodhan", token="tok")
         self.assertEqual(out["source"], "provided")
-        self.assertIs(out["results"]["datasets/coild-aikosh/Education_v2"], False)
+        self.assertIs(out["results"]["datasets/facebook/flores"], False)
         self.assertIs(out["results"]["models/bodhan-ai/indic-translate"], True)
 
     def test_verify_hf_access_resolves_token_when_not_given(self) -> None:
