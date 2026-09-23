@@ -2,14 +2,14 @@
 
 Entry point::
 
-    python -m mr_mt.train_bodhan_qlora --config configs/cellA_bodhan_qlora.yaml
+    python -m mr_mt.train_bodhan_qlora --config configs/sessionA_bodhan_qlora.yaml
 
 Notes
 -----
 * Base model is a gated, decoder-only ``Gemma4ForConditionalGeneration``
   checkpoint. It is loaded with ``AutoProcessor`` +
   ``AutoModelForMultimodalLM`` (transformers>=5.5.2; we pin 5.13.1) and
-  ``token=`` auth from :func:`mr_mt.utils.get_hf_token`.
+  ``token=`` auth from :func:`mr_mt.secrets.get_hf_token`.
 * Gemma4 uses ``Gemma4ClippableLinear`` layers, so PEFT must use
   ``target_modules="all-linear"`` with ``exclude_modules`` for the
   vision/audio heads (never a bare list like ``["q_proj"]``).
@@ -38,6 +38,7 @@ import torch
 from mr_mt import config as config_mod
 from mr_mt import utils as utils_mod
 from mr_mt.checkpointing import build_mirror_callback
+from mr_mt.secrets import get_hf_token
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +161,7 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
 
     from transformers import BitsAndBytesConfig
 
-    token = utils_mod.get_hf_token()
+    token = get_hf_token()
     model_name = cfg["model"]["name"]
     trust_remote_code = bool(cfg["model"].get("trust_remote_code", True))
     bnb_cfg = cfg["model"].get("bnb", {})
@@ -358,7 +359,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         push_to_hub=bool(hub.get("push_to_hub", False)),
         hub_model_id=hub.get("repo_id") or None,
         hub_strategy=hub.get("strategy", "all_checkpoints"),
-        hub_token=utils_mod.get_hf_token(),
+        hub_token=get_hf_token(),
         hub_private_repo=bool(hub.get("private", True)),
         max_length=int(t.get("max_seq_length", 1024)),
         packing=bool(t.get("packing", False)),
@@ -392,17 +393,17 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
 # ---------------------------------------------------------------------------
 
 
-def _resolve_cell_config(config_path: str) -> dict:
-    """Load base.yaml then deep-merge the requested cell config on top."""
+def _resolve_session_config(config_path: str) -> dict:
+    """Load base.yaml then deep-merge the requested session config on top."""
     cell_path = Path(config_path)
     base_path = cell_path.parent / "base.yaml"
-    return config_mod.load_base_and_cell(str(base_path), str(cell_path))
+    return config_mod.load_base_and_session(str(base_path), str(cell_path))
 
 
 def main(argv=None):
     """Parse args, run QLoRA SFT, save the adapter, log the experiment."""
     parser = argparse.ArgumentParser(description="Bodhan Gemma-4 QLoRA SFT")
-    parser.add_argument("--config", required=True, help="Cell YAML config path")
+    parser.add_argument("--config", required=True, help="Session YAML config path")
     parser.add_argument("--output_dir", default=None, help="Override run output dir")
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -414,7 +415,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     t0 = time.time()
-    cfg = _resolve_cell_config(args.config)
+    cfg = _resolve_session_config(args.config)
     if args.output_dir:
         cfg.setdefault("run", {})["output_dir"] = args.output_dir
     output_dir = cfg["run"]["output_dir"]
@@ -422,7 +423,32 @@ def main(argv=None):
     utils_mod.set_seed(int(cfg["run"].get("seed", 42)))
     utils_mod.ensure_dir(output_dir)
 
+    # Fail fast BEFORE the (slow) model load if prepared data is missing —
+    # on a fresh Kaggle kernel this saves ~10 min of model download + 4-bit
+    # load before the crash. The kernel entrypoints auto-run prepare first.
+    for key in ("train_file", "dev_file"):
+        f = cfg.get("data", {}).get(key)
+        if f and not Path(f).is_file():
+            raise SystemExit(
+                f"Prepared data file missing: {f} "
+                f"(run `python -m mr_mt.data.download && python -m mr_mt.data.prepare` first)"
+            )
+
     model, tokenizer, processor = load_model_and_tokenizer(cfg)
+
+    # Preflight: assistant_only_loss requires {% generation %} markers in the
+    # chat template (TRL 1.6 enforces this at trainer init). Warn here with
+    # the config remedy so a template regression is diagnosed in seconds.
+    if bool(cfg["training"].get("assistant_only_loss", False)):
+        tmpl = getattr(tokenizer, "chat_template", None) or ""
+        if "{% generation" not in tmpl:
+            print(
+                "WARNING: training.assistant_only_loss is true but the chat "
+                "template has no {% generation %} markers; TRL 1.6 will raise "
+                "at trainer init. Remedy: set assistant_only_loss: false in "
+                "the session config (or add markers to the template).",
+                file=sys.stderr,
+            )
 
     # kBit training prep (skip on Unsloth-patched models).
     try:

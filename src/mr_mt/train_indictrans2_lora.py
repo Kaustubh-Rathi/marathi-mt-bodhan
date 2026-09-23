@@ -11,7 +11,7 @@ fp16 (not bf16), and ``transformers>=4.33.2,<5`` (see requirements.txt).
 Run as a module (``src`` must be on PYTHONPATH)::
 
     PYTHONPATH=src python -m mr_mt.train_indictrans2_lora \\
-        --config configs/cellB_indictrans2_lora.yaml
+        --config configs/sessionB_indictrans2_lora.yaml
 """
 
 from __future__ import annotations
@@ -37,15 +37,16 @@ from transformers import (
 )
 
 from mr_mt.checkpointing import build_mirror_callback
-from mr_mt.config import load_base_and_cell
-from mr_mt.utils import ensure_dir, get_hf_token, log_experiment, read_jsonl, set_seed
+from mr_mt.config import load_base_and_session
+from mr_mt.secrets import get_hf_token
+from mr_mt.utils import ensure_dir, log_experiment, read_jsonl, set_seed
 
 
 def load_processor_and_model(cfg: dict) -> tuple:
     """Load the IndicProcessor, tokenizer, and IndicTrans2 seq2seq model.
 
     Args:
-        cfg: Merged base+cell config. Uses ``model.name`` and
+        cfg: Merged base+session config. Uses ``model.name`` and
             ``model.trust_remote_code``.
 
     Returns:
@@ -131,8 +132,11 @@ def build_trainer(
 ) -> Seq2SeqTrainer:
     """Build the Seq2SeqTrainer with the mandatory IndicDataCollator.
 
-    Generation is enabled (``predict_with_generate=True``) so eval loss is
-    backed by decoded outputs. ``dataloader_num_workers=0`` guards the
+    Generation during training is OFF by default (``predict_with_generate:
+    false``) — beam-5 generation over ~1000 dev rows per eval is a 20-50 min
+    sink per run; loss-only eval is enough for model selection, and real
+    generation metrics come from ``mr_mt.evaluate`` afterwards. Enable it via
+    the config if needed. ``dataloader_num_workers=0`` guards the
     upstream random-segfault issue (#117). All optimization settings come
     from the ``training`` config section.
 
@@ -176,7 +180,7 @@ def build_trainer(
         max_grad_norm=float(t.get("max_grad_norm", 1.0)),
         report_to=t.get("report_to", ["tensorboard"]),
         seed=int(cfg["run"].get("seed", 42)),
-        predict_with_generate=True,
+        predict_with_generate=bool(t.get("predict_with_generate", False)),
         generation_num_beams=int(cfg.get("eval", {}).get("num_beams", 5)),
         generation_max_length=int(cfg.get("eval", {}).get("max_new_tokens", 256)),
         push_to_hub=bool(hub.get("push_to_hub", False)),
@@ -205,21 +209,39 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(
         description="Session B fallback: LoRA fine-tune IndicTrans2 (hin_Deva->mar_Deva)."
     )
-    parser.add_argument("--config", required=True, help="Path to the cell YAML config.")
+    parser.add_argument("--config", required=True, help="Path to the session YAML config.")
     parser.add_argument(
         "--base",
         default=None,
         help="Optional path to base.yaml (defaults to base.yaml next to --config).",
     )
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        nargs="?",
+        const=True,
+        default=None,
+        help="Resume training (optional checkpoint path or True for latest in output_dir)",
+    )
     args = parser.parse_args(argv)
 
     cell_path = Path(args.config)
     base_path = Path(args.base) if args.base else cell_path.parent / "base.yaml"
-    cfg = load_base_and_cell(base_path, cell_path)
+    cfg = load_base_and_session(base_path, cell_path)
 
     set_seed(int(cfg["run"].get("seed", 42)))
     output_dir = Path(cfg["run"]["output_dir"])
     ensure_dir(output_dir)
+
+    # Fail fast BEFORE the (slow) model load if prepared data is missing —
+    # on a fresh Kaggle kernel this saves ~10 min of model download + 4-bit
+    # load before the crash. The kernel entrypoints auto-run prepare first.
+    for key in ("train_file", "dev_file"):
+        f = Path(cfg["data"][key])
+        if not f.is_file():
+            raise SystemExit(
+                f"Prepared data file missing: {f} "
+                f"(run `python -m mr_mt.data.download && python -m mr_mt.data.prepare` first)"
+            )
 
     processor, tokenizer, base_model = load_processor_and_model(cfg)
     model = get_peft_model(base_model, build_lora(cfg))
@@ -229,22 +251,55 @@ def main(argv=None) -> None:
 
     max_len = int(cfg["training"].get("max_seq_length", 256))
 
-    def tokenize_row(row: dict) -> dict:
-        texts = preprocess(row, processor, cfg)
-        model_inputs = tokenizer(texts["src_text"], max_length=max_len, truncation=True)
+    def tokenize_batch(batch: dict) -> dict:
+        """Batched Indic normalize + tokenize (one preprocess call per lang group).
+
+        Per-row ``IndicProcessor.preprocess_batch`` calls cost ~10 ms each;
+        over 8k rows that is minutes of pure-Python overhead. Batched calls
+        cut it to seconds. Per-row ``src_lang``/``tgt_lang`` tags are honoured
+        by grouping rows of the same language pair within the batch (the
+        Samanantar fallback keeps eng_Latn source rows).
+        """
+        srcs = [str(s) for s in batch["src"]]
+        tgts = [str(t) for t in batch["tgt"]]
+        row_src_langs = batch.get("src_lang") or [None] * len(srcs)
+        row_tgt_langs = batch.get("tgt_lang") or [None] * len(srcs)
+        groups: dict = {}
+        for i, (sl, tl) in enumerate(zip(row_src_langs, row_tgt_langs)):
+            key = (
+                sl or cfg["data"]["source_lang"],
+                tl or cfg["data"]["target_lang"],
+            )
+            groups.setdefault(key, []).append(i)
+        src_texts = [""] * len(srcs)
+        for (src_lang, tgt_lang), idxs in groups.items():
+            pre = processor.preprocess_batch(
+                [srcs[i] for i in idxs], src_lang=src_lang, tgt_lang=tgt_lang
+            )
+            for i, text in zip(idxs, pre):
+                src_texts[i] = text
+        model_inputs = tokenizer(
+            src_texts, max_length=max_len, truncation=True
+        )
         labels = tokenizer(
-            text_target=texts["tgt_text"], max_length=max_len, truncation=True
+            text_target=tgts, max_length=max_len, truncation=True
         )
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
     train_ds = Dataset.from_list(read_jsonl(cfg["data"]["train_file"]))
     eval_ds = Dataset.from_list(read_jsonl(cfg["data"]["dev_file"]))
-    train_ds = train_ds.map(tokenize_row, remove_columns=train_ds.column_names)
-    eval_ds = eval_ds.map(tokenize_row, remove_columns=eval_ds.column_names)
+    train_ds = train_ds.map(
+        tokenize_batch, batched=True, batch_size=256,
+        remove_columns=train_ds.column_names,
+    )
+    eval_ds = eval_ds.map(
+        tokenize_batch, batched=True, batch_size=256,
+        remove_columns=eval_ds.column_names,
+    )
 
     trainer = build_trainer(model, tokenizer, processor, train_ds, eval_ds, cfg)
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
     adapter_dir = output_dir / "adapter"
     ensure_dir(adapter_dir)
@@ -257,8 +312,8 @@ def main(argv=None) -> None:
 
     log_experiment(
         {
-            "run_id": cfg["run"].get("name", "cellB_indictrans2_lora"),
-            "cell": "cellB",
+            "run_id": cfg["run"].get("name", "sessionB_indictrans2_lora"),
+            "cell": "sessionB",
             "base_model": cfg["model"]["name"],
             "method": "lora-seq2seq",
             "r": cfg.get("lora", {}).get("r", 16),

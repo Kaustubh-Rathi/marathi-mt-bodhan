@@ -10,14 +10,16 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - Processed files: `data/processed/train.jsonl`, `dev.jsonl`, `test.jsonl`.
 - Entry points run as modules: `python -m mr_mt.<script> --config <yaml> [args]`.
 - Secrets: read `HF_TOKEN` from env first, else from a gitignored `.env` at repo root.
-  Never hardcode tokens. Use `mr_mt.utils.get_hf_token()`.
+  Never hardcode tokens. Use `mr_mt.secrets.get_hf_token()`.
 - Outputs: training writes to `output_dir` from config; adapters under `<output_dir>/adapter`.
 - All scripts must be importable without side effects (`if __name__ == "__main__":`).
 
 ## Modules and required public functions
 
+### mr_mt/secrets.py
+- `get_hf_token() -> Optional[str]`  # env -> Kaggle Secret -> hf-token Dataset -> .env
+
 ### mr_mt/utils.py
-- `get_hf_token() -> Optional[str]`
 - `set_seed(seed: int) -> None`
 - `ensure_dir(p) -> str`
 - `read_jsonl(path) -> List[dict]`
@@ -77,20 +79,32 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `TBLogger` thin wrapper; `append_run(run: dict, path="reports/experiments.csv")`.
 
 ### mr_mt/checkpointing.py
-- `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote, rclone_binary)` —
-  TrainerCallback `on_save`: with `adapter_only_copy: true` it writes an
-  adapter-only copy of each `checkpoint-<step>` under `mirror_dir` and rclones it;
-  with `false` it rclones the full checkpoint dir directly (no local duplicate).
-  Best-effort: failures never abort training.
+- `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote,
+  rclone_binary, keep_local, max_pending)` — TrainerCallback. `on_save`:
+  with `adapter_only_copy: true` it writes an adapter-only copy of each
+  `checkpoint-<step>` under `mirror_dir` (NOT resumable) and background-rclones
+  it; with `false` (default) it background-rclones the full checkpoint dir
+  directly. Uploads are `subprocess.Popen` (never block training), reaped on
+  the next save, all awaited at `on_train_end`; a `_upload_complete` marker is
+  touched per verified upload; confirmed checkpoints beyond the newest
+  `keep_local` are pruned locally. Best-effort: failures never abort training,
+  but a configured remote with a missing rclone binary prints a loud warning.
 - `build_mirror_callback(cfg) -> CheckpointMirrorCallback` from `cfg["checkpointing"]`.
 
 ### scripts/kaggle/ (Kaggle script kernels, not notebooks)
-- `bootstrap.activate(stack) -> repo_dir` — locate/clone repo, add `src` +
+- `kaggle_env.activate(stack) -> repo_dir` — locate/clone repo, add `src` +
   `scripts/kaggle` to path, chdir, export HF token, optional pip install
   (`MR_MT_INSTALL=1`) and rclone config.
-- `prepare_data.py`, `train_bodhan.py`, `train_indictrans2.py`, `evaluate.py` — thin
-  entrypoints; `kernel-metadata.*.json` set `kernel_type: script`, GPU, internet,
-  and the private `hf-token` dataset.
+- `kaggle_env.get_setting(name, default="")` — env var, then Kaggle Secret.
+- `kaggle_env.latest_confirmed_checkpoint(remote) -> Optional[str]` — highest
+  `checkpoint-<N>` under a Drive remote that has the `_upload_complete` marker.
+- `kaggle_env.rclone_fetch(remote_dir, local_dir, includes=None) -> bool`.
+- `kernel_prepare_data.py`, `kernel_train_bodhan.py`, `kernel_train_indictrans2.py`, `kernel_evaluate.py` — thin
+  entrypoints; the train kernels auto-run download+prepare if `data/processed`
+  is missing and honour `MR_MT_RESUME=auto`; the eval kernel auto-fetches the
+  latest confirmed Drive checkpoint when `MR_MT_ADAPTER` is unset.
+  `kernel-metadata.*.json` set `kernel_type: script`, GPU, internet,
+  and the private `hf-token` / `gdrive-creds` datasets.
 
 ## Config schema (configs/base.yaml)
-See `configs/base.yaml`. Cell configs inherit and override.
+See `configs/base.yaml`. Session configs inherit and override.

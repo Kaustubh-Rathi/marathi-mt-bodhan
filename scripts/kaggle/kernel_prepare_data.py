@@ -7,16 +7,16 @@ from pathlib import Path
 
 REPO = os.environ.get("MR_MT_REPO_DIR", "/kaggle/working/marathi-mt-bodhan")
 REPO_URL = os.environ.get(
-    "MR_MT_REPO_URL", "https://github.com/your-user/marathi-mt-bodhan.git"
+    "MR_MT_REPO_URL", "https://github.com/Kaustubh-Rathi/marathi-mt-bodhan.git"
 )
 
-if not (Path(REPO) / "scripts" / "kaggle" / "bootstrap.py").is_file():
+if not (Path(REPO) / "scripts" / "kaggle" / "kaggle_env.py").is_file():
     subprocess.run(["git", "clone", "--depth", "1", REPO_URL, REPO], check=True)
 
 sys.path.insert(0, str(Path(REPO) / "scripts" / "kaggle"))
-import bootstrap  # noqa: E402
+import kaggle_env  # noqa: E402
 
-bootstrap.activate("bodhan")
+kaggle_env.activate("bodhan")
 
 from mr_mt.data.download import main as download_main  # noqa: E402
 from mr_mt.data.prepare import main as prepare_main  # noqa: E402

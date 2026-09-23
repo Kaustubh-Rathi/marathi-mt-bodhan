@@ -19,7 +19,7 @@ Benchmarks:
     ``facebook/flores`` (config ``hin_Deva-mar_Deva``, split ``devtest``),
     each saved to ``data/raw/benchmarks/<name>.jsonl``.
 
-Python 3.11. Secrets come from :func:`mr_mt.utils.get_hf_token` — never
+Python 3.11. Secrets come from :func:`mr_mt.secrets.get_hf_token` — never
 hardcoded. Heavy imports (``datasets``, ``huggingface_hub``) are lazy so the
 module stays importable without side effects.
 """
@@ -31,7 +31,8 @@ from pathlib import Path
 from typing import Dict
 
 from mr_mt.config import load_config
-from mr_mt.utils import ensure_dir, get_hf_token, write_jsonl
+from mr_mt.secrets import get_hf_token
+from mr_mt.utils import ensure_dir, write_jsonl
 
 COILD_REPO_ID = "coild-aikosh/Education_v2"
 COILD_LICENSE_URL = "https://huggingface.co/datasets/coild-aikosh/Education_v2"

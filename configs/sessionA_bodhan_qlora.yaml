@@ -1,11 +1,11 @@
-# Cell A: Bodhan Gemma-4 QLoRA main run (Session A primary).
+# Session A: Bodhan Gemma-4 QLoRA main run (Session A primary).
 # Deep-merged on top of configs/base.yaml via
-# mr_mt.config.load_base_and_cell. Only overrides are listed here.
+# mr_mt.config.load_base_and_session. Only overrides are listed here.
 
 run:
-  name: cellA_bodhan_qlora
-  cell: cellA_bodhan_qlora
-  output_dir: /kaggle/working/cellA
+  name: sessionA_bodhan_qlora
+  cell: sessionA_bodhan_qlora
+  output_dir: /kaggle/working/sessionA
 
 lora:
   r: 32
@@ -19,13 +19,13 @@ training:
   max_steps: 1000
   save_steps: 100
   eval_steps: 100
-  logging_dir: /kaggle/working/cellA/logs
+  logging_dir: /kaggle/working/sessionA/logs
 
 hub:
   push_to_hub: false
   repo_id: "your-hf-user/indic-translate-mr-education-lora"
 
 checkpointing:
-  mirror_dir: /kaggle/working/cellA/checkpoint_mirror
+  mirror_dir: /kaggle/working/sessionA/checkpoint_mirror
   adapter_only_copy: false
   rclone_remote: "gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints"

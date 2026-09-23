@@ -140,7 +140,7 @@ Fallback (Session B) deltas: `SEQ_2_SEQ_LM` LoRA on `q_proj,k_proj` only,
 | 4 | 12h session timeouts | All checkpoints kept + Drive sync (live rclone / Hub optional); resume-from-checkpoint flow (`docs/TRAINING.md`) |
 | 5 | P100 lacks bf16/FA2 | fp16 fallback path; T4 preferred for Session A |
 | 6 | Leakage risk (BPCC-adjacent data) | Education_v2 choice + L1..L10 checklist + normalize-before-score |
-| 7 | No hosted tracking | TensorBoard per cell + `reports/experiments.csv` index + Drive sync |
+| 7 | No hosted tracking | TensorBoard per session + `reports/experiments.csv` index + Drive sync |
 
 ## 9. Reproduce
 

@@ -2,6 +2,15 @@
 .env
 *.env
 
+# credential files — live in ~/.kaggle, HF CLI, or private Kaggle Datasets;
+# never in the repo
+kaggle.json
+access_token*
+rclone.conf
+sa.json
+hf_token.txt
+token.txt
+
 # python
 __pycache__/
 *.py[cod]

@@ -1,4 +1,4 @@
-"""Bootstrap for Kaggle *script* kernels and local runs.
+"""Kaggle environment setup for *script* kernels and local runs (formerly bootstrap.py).
 
 Kaggle script kernels upload only the single ``code_file``, so these run scripts
 must locate the repo themselves. Call :func:`activate` first; it:
@@ -28,6 +28,9 @@ REPO_DIR_ENV = "MR_MT_REPO_DIR"
 REPO_URL_ENV = "MR_MT_REPO_URL"
 DEFAULT_REPO_DIR = "/kaggle/working/marathi-mt-bodhan"
 
+# Single source of truth for local installs is requirements.txt; STACK_PINS is
+# the same pin set expressed per-Kaggle-kernel (two stacks, one kernel each).
+# Keep them in sync when bumping a pin.
 STACK_PINS = {
     # Session A / C: Bodhan Gemma-4 QLoRA (Arushhh-proven stack)
     "bodhan": [
@@ -133,7 +136,7 @@ def _ensure_rclone() -> Optional[str]:
         import zipfile
 
         url = "https://downloads.rclone.org/rclone-current-linux-amd64.zip"
-        print(f"[bootstrap] downloading rclone from {url}")
+        print(f"[kaggle_env] downloading rclone from {url}")
         with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310
             blob = resp.read()
         with zipfile.ZipFile(io.BytesIO(blob)) as zf:
@@ -144,7 +147,7 @@ def _ensure_rclone() -> Optional[str]:
         target.chmod(0o755)
         return str(target)
     except Exception as exc:  # noqa: BLE001 - best effort
-        print(f"[bootstrap] rclone download failed ({exc}).", file=sys.stderr)
+        print(f"[kaggle_env] rclone download failed ({exc}).", file=sys.stderr)
         return None
 
 
@@ -163,10 +166,10 @@ def _configure_rclone() -> None:
             os.environ["PATH"] = (
                 str(Path(exe).parent) + os.pathsep + os.environ.get("PATH", "")
             )
-            print(f"[bootstrap] rclone={exe} config={conf}")
+            print(f"[kaggle_env] rclone={exe} config={conf}")
         else:
             print(
-                "[bootstrap] rclone config found but binary unavailable; "
+                "[kaggle_env] rclone config found but binary unavailable; "
                 "checkpoint mirroring will log and skip.",
                 file=sys.stderr,
             )
@@ -194,7 +197,7 @@ def activate(stack: str = "bodhan") -> Path:
 
     _install_deps(stack)
 
-    from mr_mt.utils import get_hf_token  # noqa: E402 - after sys.path setup
+    from mr_mt.secrets import get_hf_token  # noqa: E402 - after sys.path setup
 
     token = get_hf_token()
     if token:
@@ -208,5 +211,77 @@ def activate(stack: str = "bodhan") -> Path:
         )
 
     _configure_rclone()
-    print(f"[bootstrap] repo={repo} stack={stack} token={'yes' if token else 'no'}")
+    print(f"[kaggle_env] repo={repo} stack={stack} token={'yes' if token else 'no'}")
     return repo
+
+def get_setting(name: str, default: str = "") -> str:
+    """Resolve a run-time setting: env var first, then a Kaggle Secret.
+
+    Kaggle script kernels cannot receive arbitrary env vars via
+    kernel-metadata.json, but Kaggle Secrets are user-level and readable from
+    every kernel of the account — so optional knobs (``MR_MT_ADAPTER``,
+    ``MR_MT_FAMILY``, ``MR_MT_RESUME``) can be set as Secrets in the web UI.
+    """
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
+    try:  # pragma: no cover - Kaggle-only
+        from kaggle_secrets import UserSecretsClient
+
+        return (UserSecretsClient().get_secret(name) or "").strip()
+    except Exception:
+        return default
+
+
+def _rclone_cmd(binary: str, *args: str, timeout: int = 3600):
+    """Run rclone (PATH first, then the downloaded /kaggle/working/bin copy)."""
+    exe = shutil.which(binary) or str(Path("/kaggle/working/bin") / binary)
+    return subprocess.run(  # noqa: S603 - controlled args
+        [exe, *args], capture_output=True, text=True, timeout=timeout
+    )
+
+
+def latest_confirmed_checkpoint(remote: str, binary: str = "rclone") -> Optional[str]:
+    """Return ``<remote>/checkpoint-<N>`` for the highest N whose upload finished.
+
+    Only directories containing the ``_upload_complete`` marker (touched by
+    ``mr_mt.checkpointing`` after a successful upload) are considered, so a
+    torn upload from a killed session is never selected. None on any failure.
+    """
+    remote = remote.rstrip("/")
+    try:
+        proc = _rclone_cmd(binary, "lsf", "--dirs-only", remote, timeout=120)
+        if proc.returncode != 0:
+            print(f"[kaggle_env] lsf failed: {proc.stderr.strip()[:300]}", file=sys.stderr)
+            return None
+        steps = []
+        for entry in proc.stdout.splitlines():
+            name = entry.strip().rstrip("/")
+            if name.startswith("checkpoint-") and name.rsplit("-", 1)[-1].isdigit():
+                steps.append((int(name.rsplit("-", 1)[-1]), name))
+        for _, name in sorted(steps, reverse=True):
+            chk = _rclone_cmd(binary, "lsf", "--files-only", f"{remote}/{name}", timeout=120)
+            if chk.returncode == 0 and "_upload_complete" in chk.stdout:
+                return f"{remote}/{name}"
+    except Exception as exc:  # noqa: BLE001 - best effort
+        print(f"[kaggle_env] checkpoint discovery failed ({exc}).", file=sys.stderr)
+    return None
+
+
+def rclone_fetch(
+    remote_dir: str, local_dir: str, includes: Optional[list] = None, binary: str = "rclone"
+) -> bool:
+    """``rclone copy remote_dir local_dir`` (optionally --include-filtered)."""
+    args = ["copy", remote_dir.rstrip("/"), str(local_dir), "--transfers", "8"]
+    for pat in includes or []:
+        args += ["--include", pat]
+    try:
+        proc = _rclone_cmd(binary, *args)
+        if proc.returncode != 0:
+            print(f"[kaggle_env] fetch failed: {proc.stderr.strip()[:300]}", file=sys.stderr)
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001 - best effort
+        print(f"[kaggle_env] fetch failed ({exc}).", file=sys.stderr)
+        return False
+

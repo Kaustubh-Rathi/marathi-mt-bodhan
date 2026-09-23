@@ -1,20 +1,20 @@
-# Cell C: single-variable-ish ablation off Cell A (Session C).
+# Session C: single-variable-ish ablation off Session A (Session C).
 # Deep-merged on top of configs/base.yaml via
-# mr_mt.config.load_base_and_cell. Only overrides are listed here.
+# mr_mt.config.load_base_and_session. Only overrides are listed here.
 #
-# Ablation deltas vs Cell A (all else identical):
+# Ablation deltas vs Session A (all else identical):
 #   training.max_seq_length: 1024 -> 512   (shorter context / faster steps)
 #   training.learning_rate:  1.0e-4 -> 5.0e-5 (lower LR for stability check)
 #   training.max_steps:      1000 -> 600   (shorter run; compare loss @600)
 #   lora.r / lora.alpha:     32/64 -> 16/32 (halved adapter capacity)
 # NOTE: several variables change at once, so this is a "config ablation"
 # rather than a strict single-variable experiment; compare against the
-# Cell A curves in reports/ and note the confound in reports/experiments.csv.
+# Session A curves in reports/ and note the confound in reports/experiments.csv.
 
 run:
-  name: cellC_ablation
-  cell: cellC_ablation
-  output_dir: /kaggle/working/cellC
+  name: sessionC_ablation
+  cell: sessionC_ablation
+  output_dir: /kaggle/working/sessionC
 
 lora:
   r: 16
@@ -29,13 +29,13 @@ training:
   max_steps: 600
   save_steps: 100
   eval_steps: 100
-  logging_dir: /kaggle/working/cellC/logs
+  logging_dir: /kaggle/working/sessionC/logs
 
 hub:
   push_to_hub: false
   repo_id: "your-hf-user/indic-translate-mr-education-lora"
 
 checkpointing:
-  mirror_dir: /kaggle/working/cellC/checkpoint_mirror
+  mirror_dir: /kaggle/working/sessionC/checkpoint_mirror
   adapter_only_copy: false
   rclone_remote: "gdrive:mr-mt-edu-2026/ablation/checkpoints"

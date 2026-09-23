@@ -1,7 +1,7 @@
 {
   "id": "acajjhfh/marathi-mt-prepare-data",
   "title": "Marathi MT - prepare data",
-  "code_file": "prepare_data.py",
+  "code_file": "kernel_prepare_data.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,

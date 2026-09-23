@@ -30,15 +30,15 @@ def resolve(base_cfg: dict, overrides: Optional[dict] = None) -> dict:
     return _deep_merge(base_cfg, overrides)
 
 
-def load_base_and_cell(base_path, cell_path) -> dict:
-    """Load base.yaml then deep-merge the cell config on top."""
+def load_base_and_session(base_path, cell_path) -> dict:
+    """Load base.yaml then deep-merge the session config on top."""
     base = load_config(base_path)
     cell = load_config(cell_path)
     return _deep_merge(base, cell)
 
 
-def load_cell_config(path) -> dict:
-    """Load a cell config, deep-merging the sibling ``base.yaml`` if present.
+def load_session_config(path) -> dict:
+    """Load a session config, deep-merging the sibling ``base.yaml`` if present.
 
     If ``path`` already points at ``base.yaml`` (or no sibling base exists),
     it is loaded as-is. This lets every entry point accept either a cell
@@ -47,5 +47,5 @@ def load_cell_config(path) -> dict:
     p = Path(path)
     base = p.parent / "base.yaml"
     if p.name != "base.yaml" and base.exists():
-        return load_base_and_cell(str(base), str(p))
+        return load_base_and_session(str(base), str(p))
     return load_config(p)

@@ -1,7 +1,7 @@
 {
   "id": "dreamexcellence/marathi-mt-indictrans2-train",
   "title": "Marathi MT - IndicTrans2 LoRA train",
-  "code_file": "train_indictrans2.py",
+  "code_file": "kernel_train_indictrans2.py",
   "language": "python",
   "kernel_type": "script",
   "is_private": true,

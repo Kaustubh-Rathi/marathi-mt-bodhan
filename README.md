@@ -10,7 +10,7 @@ and deliver an end-to-end run with clean code, honest docs, and reproducible art
 - **Train:** [`coild-aikosh/Education_v2`](https://huggingface.co/datasets/coild-aikosh/Education_v2)
   HIN–MAR (education-domain, CC-BY-4.0).
 - **Eval (held out, never trained on):** [`ai4bharat/IN22-Gen`](https://huggingface.co/datasets/ai4bharat/IN22-Gen)
-  (`hin_Deva-mar_Deva`) + [`facebook/flores`](https://huggingface.co/datasets/facebook/flores) devtest.
+  (hin_Deva → mar_Deva test split) + [`facebook/flores`](https://huggingface.co/datasets/facebook/flores) devtest.
 
 > **Scoring note (per assignment brief):** NOT scored on metrics; scored on end-to-end run,
 > code structure, and effort/judgement/problem-solving. The graded narrative lives in
@@ -25,12 +25,13 @@ marathi-mt-bodhan/
 ├── Makefile                   # data / train-a,b,c / eval / figures / sync / clean
 ├── .env.example               # env keys WITHOUT secrets (copy to .env, gitignored)
 ├── configs/
-│   └── base.yaml              # shared config; cell configs inherit + override
+│   └── base.yaml              # shared config; session configs inherit + override
 ├── src/mr_mt/                 # package root (import as `mr_mt`, PYTHONPATH=src)
-│   ├── config.py              # load_config / load_cell_config (deep merge)
-│   ├── utils.py               # get_hf_token (Kaggle Dataset/Secret/env/.env), seeds, JSONL IO
+│   ├── config.py              # load_config / load_session_config (deep merge)
+│   ├── secrets.py             # get_hf_token (Kaggle Secret/Dataset/env/.env)
+│   ├── utils.py               # seeds, JSONL IO, experiments.csv append
 │   ├── tracking.py            # TBLogger, experiments.csv append
-│   ├── checkpointing.py       # CheckpointMirrorCallback (adapter-only mirror + optional rclone)
+│   ├── checkpointing.py       # CheckpointMirrorCallback (background rclone mirror + pruning)
 │   ├── data/                  # download.py, prepare.py, decontaminate.py
 │   ├── train_bodhan_qlora.py  # Session A (primary, 8B QLoRA)
 │   ├── train_indictrans2_lora.py  # Session B (fallback, 320M LoRA)
@@ -38,13 +39,14 @@ marathi-mt-bodhan/
 │   ├── inference.py           # single-string translate CLI
 │   └── plots.py               # loss / length-hist / metric-bar figures
 ├── scripts/
-│   ├── kaggle/                # Kaggle SCRIPT kernels (no notebooks): bootstrap + run_*.py + metadata
-│   ├── run_train_cellA.sh, run_train_cellB.sh, run_data.sh, run_eval.sh
+│   ├── kaggle/                # Kaggle SCRIPT kernels (no notebooks): kaggle_env + kernel_*.py + metadata
+│   ├── run_train_sessionA.sh, run_train_sessionB.sh, run_data.sh, run_eval.sh
 │   ├── pull_kaggle_output.ps1 # Kaggle Output -> local artifacts/
 │   └── sync_drive.ps1         # artifacts/ -> gdrive:mr-mt-edu-2026/
 ├── docs/
 │   ├── SPEC.md                # interface spec (function contracts, config schema)
 │   ├── SETUP.md               # HF login, Kaggle Dataset token, two envs, GPU notes
+│   ├── HYPERPARAMETERS.md     # every knob: why this value, when/how to shift
 │   └── TRAINING.md            # per-session runs, resume, monitoring, pull flow
 ├── data/
 │   ├── raw/                   # gitignored (except .gitkeep)
@@ -89,7 +91,7 @@ make train-a
 | `eval` decoding | 256 new tokens, beam 5 | IN22-Gen/FLORES scoring config |
 | `report_to` | `tensorboard` | Deliberate: TB + CSV, no MLflow server / W&B (see APPROACH.md §2) |
 
-Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.load_cell_config` and override only
+Session configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.load_session_config` and override only
 `run.name`, `output_dir`, model/lora blocks, and `hub.repo_id`.
 
 ## Checkpoints (all of them, in full)
@@ -97,11 +99,15 @@ Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.load_cell_co
 Training keeps **all** checkpoints (`save_total_limit: null`) with full optimizer
 state (`save_only_model: false`), and gets them off the ephemeral Kaggle VM:
 
-1. **Live Drive mirror (active):** each account has a private `gdrive-creds`
-   Dataset (`rclone.conf`); `bootstrap` installs rclone and points `RCLONE_CONFIG`
+1. **Live Drive mirror (active, background):** each account has a private `gdrive-creds`
+   Dataset (`rclone.conf`); `kaggle_env` installs rclone and points `RCLONE_CONFIG`
    at it, and `CheckpointMirrorCallback` rclones each checkpoint to
-   `gdrive:mr-mt-edu-2026/<run>/checkpoints` as it is saved (full checkpoints by
-   default; `adapter_only_copy: true` for small adapter-only copies).
+   `gdrive:mr-mt-edu-2026/<run>/checkpoints` **in the background** as it is saved
+   (training never stalls; full checkpoints by default; `adapter_only_copy: true`
+   for small adapter-only copies). Each verified upload gets a `_upload_complete`
+   marker; local copies beyond the newest `checkpointing.keep_local` are pruned
+   once uploaded, so `/kaggle/working` stays under quota. Resume after a 12h
+   kill: set the Kaggle Secret `MR_MT_RESUME=auto` and re-push the kernel.
 2. **Post-run Drive sync (fallback):** `scripts/pull_kaggle_output.ps1` →
    `scripts/sync_drive.ps1` copies the whole run tree to `gdrive:mr-mt-edu-2026/<run>/`.
 3. **HF Hub (optional, off by default):** set `hub.push_to_hub: true` + a real
@@ -112,7 +118,7 @@ state (`save_only_model: false`), and gets them off the ephemeral Kaggle VM:
 
 Kaggle `kernel_type: script` entrypoints live in [`scripts/kaggle/`](scripts/kaggle/).
 The token is delivered by private `hf-token` Datasets already created for the
-three accounts; the repo URL is set in `bootstrap.py`. Then:
+three accounts; the repo URL is set in `kaggle_env.py`. Then:
 
 ```bash
 kaggle kernels push -p scripts/kaggle
@@ -145,6 +151,7 @@ See [scripts/kaggle/README.md](scripts/kaggle/README.md) for the full flow.
 
 - [APPROACH.md](APPROACH.md) — the full graded narrative + results TODOs.
 - [docs/SETUP.md](docs/SETUP.md) — environment, gated access, Kaggle secrets.
+- [docs/HYPERPARAMETERS.md](docs/HYPERPARAMETERS.md) — hyperparameter rationale + shift table.
 - [docs/TRAINING.md](docs/TRAINING.md) — running/resuming sessions, Drive pull flow.
 - [docs/SPEC.md](docs/SPEC.md) — module/function contracts for contributors.
 - [reports/LEAKAGE_CHECKLIST.md](reports/LEAKAGE_CHECKLIST.md) — decontamination gates.

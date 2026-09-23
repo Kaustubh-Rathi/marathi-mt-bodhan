@@ -3,7 +3,7 @@
 ## 1. Hugging Face login + gated licenses to accept
 
 All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
-`mr_mt.utils.get_hf_token()`). **Never commit tokens**; `.env` is gitignored.
+`mr_mt.secrets.get_hf_token()`). **Never commit tokens**; `.env` is gitignored.
 
 1. Create a token at https://huggingface.co/settings/tokens (read role is enough to
    download; write role only if pushing checkpoints to the Hub).
@@ -24,33 +24,40 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
 ## 2. Kaggle token + code delivery (script kernels)
 
 We run Kaggle **script kernels** (`kernel_type: script`), not notebooks.
-`kaggle kernels push` cannot attach Secrets (Kaggle/kaggle-api#582), so the token
-is delivered as a **private Kaggle Dataset**:
+Kaggle Secrets are **user-level** — created once per account (web UI →
+Settings/Add-ons → Secrets) they are readable from every kernel of that
+account, including pushed script kernels, via `UserSecretsClient`:
 
-1. Create a private Dataset containing a single file `hf_token.txt` (your HF token).
-   Note its slug, e.g. `your-kaggle-username/hf-token`.
-2. Attach it in each `scripts/kaggle/kernel-metadata.*.json` under `dataset_sources`.
-3. `mr_mt.utils.get_hf_token()` resolves the token in this order: `HF_TOKEN` env →
-   Kaggle Secret (if manually attached via web UI) → `/kaggle/input/**/hf_token.txt`
-   → gitignored `.env`. It is exported as `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` in
-   `scripts/kaggle/bootstrap.py`.
+1. **Preferred:** create a Secret named `HF_TOKEN` on each of the three
+   accounts. (kernel-metadata.json has no secrets field and the CLI has no
+   secrets flag — kaggle-api#582 is an *enhancement* request for CLI-side
+   management, NOT a limitation on reading secrets from kernels.)
+2. **Fallback (already wired):** a private Kaggle Dataset containing a single
+   `hf_token.txt`, attached in each `scripts/kaggle/kernel-metadata.*.json`
+   under `dataset_sources` (e.g. `your-kaggle-username/hf-token`).
+3. `mr_mt.secrets.get_hf_token()` resolves the token in this order: `HF_TOKEN` env →
+   Kaggle Secret → `/kaggle/input/**/hf_token.txt` → gitignored `.env`.
+   It is exported as `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` in
+   `scripts/kaggle/kaggle_env.py`. Optional run knobs (`MR_MT_RESUME`,
+   `MR_MT_ADAPTER`, `MR_MT_FAMILY`) likewise read env → Secret
+   (`kaggle_env.get_setting`).
 
-Code delivery: `bootstrap.py` locates the repo at `MR_MT_REPO_DIR`
+Code delivery: `kaggle_env.py` locates the repo at `MR_MT_REPO_DIR`
 (default `/kaggle/working/marathi-mt-bodhan`) and `git clone`s it from
 `MR_MT_REPO_URL` if missing. **Never put `.env` or the token in the repo.**
 
 **Live Drive mirror (wired):** each account has a private `gdrive-creds` Dataset
-containing `rclone.conf`; `bootstrap._configure_rclone()` points `RCLONE_CONFIG` at
+containing `rclone.conf`; `kaggle_env._configure_rclone()` points `RCLONE_CONFIG` at
 it and installs the static rclone binary to `/kaggle/working/bin` if absent. The
-cell configs set `checkpointing.rclone_remote`, so every checkpoint is rcloned to
+session configs set `checkpointing.rclone_remote`, so every checkpoint is rcloned to
 Drive during training (see [TRAINING.md](TRAINING.md)).
 
 ### GPU + persistence
 
 Enable GPU and Internet in `kernel-metadata.*.json` (`enable_gpu`, `enable_internet`).
 `/kaggle/working` is ephemeral (12h cap, ~20GB) and only persists on a **successful**
-run — that is why every checkpoint is pushed to the Hub and mirrored
-(`mr_mt.checkpointing`). See [TRAINING.md](TRAINING.md).
+run — that is why every checkpoint is mirrored to Drive (`mr_mt.checkpointing`;
+Hub push is an optional second channel). See [TRAINING.md](TRAINING.md).
 
 ## 3. Dependencies — TWO environments (do not mix)
 
@@ -66,7 +73,7 @@ Pins (see `requirements.txt`): `transformers==5.13.1`, `trl==1.6.0`, `peft==0.20
 `sentencepiece`, `sacrebleu`, `huggingface_hub`, `PyYAML`, `pandas`, `matplotlib`,
 `tensorboard`.
 
-**Session B (IndicTrans2-200M fallback)** — separate env; IndicTransToolkit conflicts
+**Session B (IndicTrans2 indic-indic-dist-320M fallback)** — separate env; IndicTransToolkit conflicts
 with `transformers>=5`:
 
 ```bash
@@ -87,4 +94,4 @@ pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacreble
 | Either | 12h/session cap — rely on save-every-100 + Hub resume, not on finishing in one go |
 
 Verify GPU before launching: `nvidia-smi` (in the run script, or via `kaggle kernels logs`) and confirm dtype flags match
-the card. Session B (200M) runs fine on either card.
+the card. Session B (indic-indic-dist-320M) runs fine on either card.

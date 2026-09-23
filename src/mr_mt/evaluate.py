@@ -28,7 +28,7 @@ Outputs (relative to repo root / CWD):
   - one appended row in ``reports/experiments.csv`` (``cell="eval"``)
 
 Python 3.11. No hard-coded tokens: gated downloads use
-``mr_mt.utils.get_hf_token``.
+``mr_mt.secrets.get_hf_token``.
 """
 
 from __future__ import annotations
@@ -39,8 +39,9 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from mr_mt.config import load_cell_config
-from mr_mt.utils import ensure_dir, get_hf_token, log_experiment, set_seed
+from mr_mt.config import load_session_config
+from mr_mt.secrets import get_hf_token
+from mr_mt.utils import ensure_dir, log_experiment, set_seed
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +204,13 @@ def _generate_bodhan(model, processor, src_texts: List[str], cfg: dict) -> List[
     device = getattr(model, "device", None) or torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
+
+    # Decoder-only batched generation requires LEFT padding; with right
+    # padding the model continues from pad tokens and outputs are wrong.
+    sub_tok = getattr(processor, "tokenizer", None)
+    pad_target = sub_tok if sub_tok is not None else processor
+    if hasattr(pad_target, "padding_side") and pad_target.padding_side != "left":
+        pad_target.padding_side = "left"
 
     # Chat-templated prompts; fall back to the raw template string.
     prompts: List[str] = []
@@ -434,7 +442,7 @@ def main(argv: Optional[List[str]] = None) -> dict:
     )
     args = parser.parse_args(argv)
 
-    cfg = load_cell_config(args.config)
+    cfg = load_session_config(args.config)
     set_seed(int(cfg.get("run", {}).get("seed", 42)))
     hf_token = get_hf_token()
 
@@ -457,10 +465,20 @@ def main(argv: Optional[List[str]] = None) -> dict:
         name = bench.get("name", bench.get("dataset", "bench"))
         print(f"[evaluate] benchmark={name} family={args.family}")
         srcs, refs = _load_benchmark(bench, hf_token)
-        preds: List[str] = []
-        for i in range(0, len(srcs), batch_size):
-            chunk = [{"src": s} for s in srcs[i : i + batch_size]]
-            preds.extend(translate_batch(model, tokenizer, chunk, cfg, args.family))
+        # Length-sorted batching: batches of similar-length sentences pad far
+        # less and decode faster with beam search (~15-30% eval wall time).
+        # Predictions are un-permuted back to dataset order for scoring/files.
+        order = sorted(range(len(srcs)), key=lambda i: len(srcs[i]))
+        sorted_srcs = [srcs[i] for i in order]
+        sorted_preds: List[str] = []
+        for i in range(0, len(sorted_srcs), batch_size):
+            chunk = [{"src": s} for s in sorted_srcs[i : i + batch_size]]
+            sorted_preds.extend(
+                translate_batch(model, tokenizer, chunk, cfg, args.family)
+            )
+        preds = [""] * len(sorted_preds)
+        for pos, orig_idx in enumerate(order):
+            preds[orig_idx] = sorted_preds[pos]
         bench_scores = score(preds, refs, bench.get("tgt_lang", "mar_Deva"))
         merged[name] = {
             "dataset": bench.get("dataset"),

@@ -3,7 +3,7 @@
 Model loaders are reused from :mod:`mr_mt.evaluate` to avoid duplication;
 this module only adds the one-string :func:`translate` wrapper and a CLI.
 
-Python 3.11. No hard-coded tokens (see ``mr_mt.utils.get_hf_token``).
+Python 3.11. No hard-coded tokens (see ``mr_mt.secrets.get_hf_token``).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from typing import Optional
 
-from mr_mt.config import load_cell_config
+from mr_mt.config import load_session_config
 from mr_mt.evaluate import load_model_for_family, translate_batch
 
 
@@ -49,7 +49,7 @@ def main(argv: Optional[list] = None) -> str:
     parser.add_argument("--family", default="bodhan", choices=["bodhan", "indictrans2"])
     args = parser.parse_args(argv)
 
-    cfg = load_cell_config(args.config)
+    cfg = load_session_config(args.config)
     model, tokenizer = load_model_for_family(cfg, args.adapter, args.family)
     out = translate(args.text, model, tokenizer, cfg, args.family)
     print(out)

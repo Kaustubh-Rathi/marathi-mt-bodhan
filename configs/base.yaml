@@ -42,8 +42,10 @@ training:
   max_steps: 1000
   num_train_epochs: 0
   save_steps: 100
-  save_total_limit: null  # keep ALL checkpoints; each is mirrored off the VM
-  save_only_model: false  # resumeable; adapter-only copies are mirrored separately
+  save_total_limit: null  # keep ALL checkpoints; CheckpointMirrorCallback prunes
+                          # local copies only AFTER their Drive upload is confirmed
+                          # (trainer-side rotation could delete an in-flight upload)
+  save_only_model: false  # resumeable (adapter + optimizer + scheduler + RNG)
   eval_steps: 100
   logging_steps: 10
   bf16: true
@@ -75,15 +77,22 @@ hub:
   private: true
 
 checkpointing:
-  # Full (resumeable) checkpoints are kept in output_dir and copied to Drive by
-  # the post-run sync (scripts/pull_kaggle_output.ps1 -> scripts/sync_drive.ps1).
-  # Set adapter_only_copy: true to instead mirror small adapter-only copies.
-  # Set rclone_remote (e.g. gdrive:mr-mt-edu-2026/<run>/checkpoints) to stream
-  # each checkpoint to Drive live (requires rclone + creds on the Kaggle VM).
-  mirror_dir: /kaggle/working/run/checkpoint_mirror
+  # Full (resumeable) checkpoints are uploaded to Drive in the BACKGROUND by
+  # CheckpointMirrorCallback (requires rclone_remote + rclone + gdrive creds).
+  # A _upload_complete marker is touched after each verified upload; resume
+  # from the highest remote checkpoint that has the marker.
+  # keep_local bounds /kaggle/working disk: confirmed-uploaded checkpoints
+  # beyond the newest keep_local are deleted locally (Drive keeps all).
+  # adapter_only_copy: true switches to small adapter-only mirrors instead
+  # (NOT resumable - no optimizer/scheduler/RNG state).
+  # Without rclone_remote, checkpoints stay on the VM for the post-run sync
+  # (scripts/pull_kaggle_output.ps1 -> scripts/sync_drive.ps1).
+  mirror_dir: /kaggle/working/run/checkpoint_mirror  # only used if adapter_only_copy
   adapter_only_copy: false
   rclone_remote: ""
   rclone_binary: rclone
+  keep_local: 2
+  max_pending: 2
 
 prepare:
   dataset: coild-aikosh/Education_v2
@@ -103,15 +112,23 @@ eval:
   num_beams: 5
   batch_size: 8
   benchmarks:
+    # VERIFIED via HF API (2026-09): ai4bharat/IN22-Gen has exactly ONE config
+    # ('default', pass null) and ONE split ('test'). There is NO 'gen' split
+    # and NO 'hin_Deva-mar_Deva' config — those crash load_dataset.
     - name: in22_gen
       dataset: ai4bharat/IN22-Gen
-      config: hin_Deva-mar_Deva  # pairing config (hyphenated); do not use 'all'
-      split: gen
+      config: null
+      split: test
       src_lang: hin_Deva
       tgt_lang: mar_Deva
+    # VERIFIED via HF API (2026-09): facebook/flores configs are per-language
+    # (e.g. 'hin_Deva') and 'all'; the 'all' config carries sentence_<lang>
+    # columns for every language, which _extract_pair reads directly.
+    # NOTE: flores is gated ('auto') — accept its conditions on the HF site
+    # with the HF_TOKEN account before running eval.
     - name: flores_devtest
       dataset: facebook/flores
-      config: hin_Deva-mar_Deva  # pairing config; gated, accept conditions
+      config: all
       split: devtest
       src_lang: hin_Deva
       tgt_lang: mar_Deva

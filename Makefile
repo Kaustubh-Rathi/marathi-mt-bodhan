@@ -6,9 +6,9 @@
 PYTHONPATH := src
 PYTHON    := python
 BASE      := configs/base.yaml
-CELL_A    := configs/cellA_bodhan_qlora.yaml
-CELL_B    := configs/cellB_indictrans2_lora.yaml
-CELL_C    := configs/cellC_ablation.yaml
+SESSION_A    := configs/sessionA_bodhan_qlora.yaml
+SESSION_B    := configs/sessionB_indictrans2_lora.yaml
+SESSION_C    := configs/sessionC_ablation.yaml
 
 export PYTHONPATH
 
@@ -23,15 +23,15 @@ data:
 
 # Session A (Acct1): primary Bodhan 8B QLoRA
 train-a:
-	$(PYTHON) -m mr_mt.train_bodhan_qlora --config $(CELL_A)
+	$(PYTHON) -m mr_mt.train_bodhan_qlora --config $(SESSION_A)
 
 # Session B (Acct2): fallback IndicTrans2-200M LoRA (separate env, see docs/SETUP.md)
 train-b:
-	$(PYTHON) -m mr_mt.train_indictrans2_lora --config $(CELL_B)
+	$(PYTHON) -m mr_mt.train_indictrans2_lora --config $(SESSION_B)
 
-# Session C (Acct3): ablation / demo (Bodhan QLoRA overrides via cell config)
+# Session C (Acct3): ablation / demo (Bodhan QLoRA overrides via session config)
 train-c:
-	$(PYTHON) -m mr_mt.train_bodhan_qlora --config $(CELL_C)
+	$(PYTHON) -m mr_mt.train_bodhan_qlora --config $(SESSION_C)
 
 # Score IN22-Gen + FLORES held-out sets -> reports/metrics.json
 eval:
@@ -41,7 +41,8 @@ eval:
 figures:
 	$(PYTHON) -m mr_mt.plots --kind metrics --inp reports/metrics.json --out reports/figures/metrics.png
 
-# Push session artifacts to Drive (gdrive:mr-mt-edu-2026/cell-{A,B,C})
+# Push local artifacts/ to Drive (gdrive:mr-mt-edu-2026/). The live per-session
+# checkpoint mirror goes to gdrive:mr-mt-edu-2026/{bodhan-qlora,indictrans2-lora,ablation}/checkpoints.
 sync:
 	powershell -ExecutionPolicy Bypass -File scripts/sync_drive.ps1
 
