@@ -1,5 +1,5 @@
 {
-  "id": "your-kaggle-username/marathi-mt-bodhan-train",
+  "id": "kaustubhcrathi/marathi-mt-bodhan-train",
   "title": "Marathi MT - Bodhan QLoRA train",
   "code_file": "train_bodhan.py",
   "language": "python",
@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["your-kaggle-username/hf-token"],
+  "dataset_sources": ["kaustubhcrathi/hf-token"],
   "keywords": [],
   "competition_sources": [],
   "kernel_sources": [],

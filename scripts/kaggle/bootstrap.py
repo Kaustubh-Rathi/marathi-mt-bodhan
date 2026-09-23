@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_REPO_URL = "https://github.com/your-user/marathi-mt-bodhan.git"
+DEFAULT_REPO_URL = "https://github.com/Kaustubh-Rathi/marathi-mt-bodhan.git"
 REPO_DIR_ENV = "MR_MT_REPO_DIR"
 REPO_URL_ENV = "MR_MT_REPO_URL"
 DEFAULT_REPO_DIR = "/kaggle/working/marathi-mt-bodhan"

@@ -108,7 +108,8 @@ Training keeps **all** checkpoints (`save_total_limit: null`) and every saved
 ## Running on Kaggle (no notebooks)
 
 Kaggle `kernel_type: script` entrypoints live in [`scripts/kaggle/`](scripts/kaggle/).
-Set up a private `hf-token` Dataset, edit the `kernel-metadata.*.json` slugs, then:
+The token is delivered by private `hf-token` Datasets already created for the
+three accounts; the repo URL is set in `bootstrap.py`. Then:
 
 ```bash
 kaggle kernels push -p scripts/kaggle

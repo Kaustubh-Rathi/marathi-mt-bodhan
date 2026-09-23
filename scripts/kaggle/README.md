@@ -4,17 +4,26 @@ Pure-Python entrypoints for Kaggle (`kernel_type: script`) — no notebooks.
 Each `*.py` locates/clones the repo, activates the environment (paths, HF token,
 optional rclone), then calls the corresponding `mr_mt` module.
 
-## One-time setup
+## One-time setup (already wired)
 
-1. **Private Kaggle Dataset with your HF token** (reliable for script kernels,
-   which cannot attach Secrets via the CLI):
-   * Create a Dataset containing a single file `hf_token.txt` (your HF token).
-   * Note its slug, e.g. `your-kaggle-username/hf-token`.
-   * `mr_mt.utils.get_hf_token()` reads it from `/kaggle/input/**/hf_token.txt`.
-2. **Set your repo URL** (if not public under the default): set env
-   `MR_MT_REPO_URL`, or edit `bootstrap.py`'s `DEFAULT_REPO_URL`.
-3. **Edit each `kernel-metadata.*.json`**: replace `your-kaggle-username` and
-   the `dataset_sources` slug with your own.
+1. **Private Kaggle Datasets with the HF token** — created for all three
+   accounts; each contains a single `hf_token.txt`:
+   * `kaustubhcrathi/hf-token`
+   * `dreamexcellence/hf-token`
+   * `acajjhfh/hf-token`
+   `mr_mt.utils.get_hf_token()` reads it from `/kaggle/input/**/hf_token.txt`.
+2. **Repo URL** — `bootstrap.py` default is
+   `https://github.com/Kaustubh-Rathi/marathi-mt-bodhan.git` (public, so the
+   Kaggle clone works without a token). Override with `MR_MT_REPO_URL`.
+
+Account → task mapping (each account runs its own kernel):
+
+| Task | `kernel-metadata.*.json` id | HF-token dataset |
+| ---- | --------------------------- | ---------------- |
+| prepare_data | `acajjhfh/marathi-mt-prepare-data` | `acajjhfh/hf-token` |
+| train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-train` | `kaustubhcrathi/hf-token` |
+| train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-train` | `dreamexcellence/hf-token` |
+| evaluate | `kaustubhcrathi/marathi-mt-evaluate` | `kaustubhcrathi/hf-token` |
 
 ## Launch
 

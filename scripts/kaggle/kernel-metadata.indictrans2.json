@@ -1,5 +1,5 @@
 {
-  "id": "your-kaggle-username/marathi-mt-indictrans2-train",
+  "id": "dreamexcellence/marathi-mt-indictrans2-train",
   "title": "Marathi MT - IndicTrans2 LoRA train",
   "code_file": "train_indictrans2.py",
   "language": "python",
@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["your-kaggle-username/hf-token"],
+  "dataset_sources": ["dreamexcellence/hf-token"],
   "keywords": [],
   "competition_sources": [],
   "kernel_sources": [],
