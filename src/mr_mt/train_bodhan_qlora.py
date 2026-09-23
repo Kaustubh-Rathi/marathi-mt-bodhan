@@ -280,9 +280,12 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Make the chat template training-compatible ({% generation %} markers) so
-    # assistant-only masking can be used; otherwise the trainer downgrades it.
-    patched = ensure_training_chat_template(tokenizer)
+    # Make the exact processor tokenizer training-compatible. Do not replace
+    # the model's native template: TRL requires the same turn format at eval.
+    processing_tok = getattr(processor, "tokenizer", None) or tokenizer
+    patched = ensure_training_chat_template(processing_tok)
+    if processing_tok is not tokenizer:
+        ensure_training_chat_template(tokenizer)
     print(f"[chat_template] generation-markers patched={patched}")
 
     # Attention-kernel fallback chain: try sdpa, then eager.
@@ -418,31 +421,11 @@ def _warmup_value(t: dict):
     return float(t.get("warmup_ratio", 0.03))
 
 
-# TRL 1.6 requires generation markers for training-compatible templates.
-# Bodhan's tokenizer does not provide them, so install a minimal explicit
-# template before constructing SFTTrainer.
-_TRAINING_CHAT_TEMPLATE = (
-    "{% for message in messages %}"
-    "{{ '<|' + message['role'] + '|>\\n' }}"
-    "{% if message['role'] == 'assistant' %}"
-    "{% generation %}{{ message['content'] + eos_token }}{% endgeneration %}"
-    "{% else %}{{ message['content'] }}{% endif %}"
-    "{% endfor %}"
-)
-
-
 def _ensure_training_chat_template(processing_tok, tokenizer):
-    """Ensure TRL 1.6 can construct its training chat template."""
+    """Ensure the exact TRL processing object retains a compatible template."""
     for obj in (processing_tok, tokenizer):
-        if obj is None:
-            continue
-        try:
-            current = getattr(obj, "chat_template", None) or ""
-            if "{% generation" not in current:
-                obj.chat_template = _TRAINING_CHAT_TEMPLATE
-                print("[chat-template] installed TRL training-compatible template", file=sys.stderr)
-        except Exception as exc:  # noqa: BLE001
-            print(f"WARNING: could not install training chat template ({exc})", file=sys.stderr)
+        if obj is not None:
+            ensure_training_chat_template(obj)
 
 
 def build_trainer(cfg: dict, model, tokenizer, train_dataset=None, processor=None):
@@ -646,19 +629,16 @@ def main(argv=None):
         cfg["training"]["bf16"] = False
         cfg["training"]["fp16"] = True
 
-    # Preflight: assistant_only_loss requires {% generation %} markers in the
-    # chat template (TRL 1.6 enforces this at trainer init). Auto-downgrade to
-    # False when the template lacks them so the run does not die at init.
+    # Preflight against the exact processing object passed to TRL. A requested
+    # assistant-only run must not silently change its loss semantics.
     if bool(cfg["training"].get("assistant_only_loss", False)):
-        tmpl = getattr(tokenizer, "chat_template", None) or ""
-        if "{% generation" not in tmpl:
-            print(
-                "WARNING: assistant_only_loss was true but the chat template "
-                "has no {% generation %} markers; setting it to false for this "
-                "run (train on the full sequence).",
-                file=sys.stderr,
+        processing_tok = getattr(processor, "tokenizer", None) or tokenizer
+        if not ensure_training_chat_template(processing_tok):
+            raise RuntimeError(
+                "assistant_only_loss=true requires a processor tokenizer with "
+                "compatible {% generation %} markers; refusing to silently "
+                "train on the full sequence"
             )
-            cfg["training"]["assistant_only_loss"] = False
 
     # kBit training prep (skip on Unsloth-patched models). NOTE: recent PEFT
     # dropped the `gradient_checkpointing` kwarg; enable GC separately below.
@@ -667,6 +647,11 @@ def main(argv=None):
 
         model = prepare_model_for_kbit_training(model)
     except Exception as exc:  # noqa: BLE001 - e.g. Unsloth already prepared
+        if "out of memory" in str(exc).lower():
+            raise RuntimeError(
+                "QLoRA preparation exhausted GPU memory; refusing to continue "
+                "with an unprepared model"
+            ) from exc
         print(
             f"WARNING: prepare_model_for_kbit_training skipped ({exc}).",
             file=sys.stderr,
