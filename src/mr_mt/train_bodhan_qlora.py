@@ -418,6 +418,33 @@ def _warmup_value(t: dict):
     return float(t.get("warmup_ratio", 0.03))
 
 
+# TRL 1.6 requires generation markers for training-compatible templates.
+# Bodhan's tokenizer does not provide them, so install a minimal explicit
+# template before constructing SFTTrainer.
+_TRAINING_CHAT_TEMPLATE = (
+    "{% for message in messages %}"
+    "{{ '<|' + message['role'] + '|>\\n' }}"
+    "{% if message['role'] == 'assistant' %}"
+    "{% generation %}{{ message['content'] + eos_token }}{% endgeneration %}"
+    "{% else %}{{ message['content'] }}{% endif %}"
+    "{% endfor %}"
+)
+
+
+def _ensure_training_chat_template(processing_tok, tokenizer):
+    """Ensure TRL 1.6 can construct its training chat template."""
+    for obj in (processing_tok, tokenizer):
+        if obj is None:
+            continue
+        try:
+            current = getattr(obj, "chat_template", None) or ""
+            if "{% generation" not in current:
+                obj.chat_template = _TRAINING_CHAT_TEMPLATE
+                print("[chat-template] installed TRL training-compatible template", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"WARNING: could not install training chat template ({exc})", file=sys.stderr)
+
+
 def build_trainer(cfg: dict, model, tokenizer, train_dataset=None, processor=None):
     """Build the TRL 1.6.0 :class:`~trl.SFTTrainer` for QLoRA SFT.
 
@@ -521,6 +548,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None, processor=Non
     # generates with the AutoProcessor, so prefer the processor's tokenizer
     # here instead of the bare AutoTokenizer.
     processing_tok = getattr(processor, "tokenizer", None) or tokenizer
+    _ensure_training_chat_template(processing_tok, tokenizer)
     if processor is not None:
         try:
             proc_tok = getattr(processor, "tokenizer", None)
