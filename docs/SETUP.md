@@ -7,10 +7,10 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
 
 1. Create a token at https://huggingface.co/settings/tokens (read role is enough to
    download; write role only if pushing checkpoints to the Hub).
-2. Accept each gated license while logged in:
+2. Accept each gated license while logged in (`facebook/flores` is public CC-BY-SA —
+   no acceptance needed):
    - `coild-aikosh/Education_v2` — https://huggingface.co/datasets/coild-aikosh/Education_v2
    - `ai4bharat/IN22-Gen` — https://huggingface.co/datasets/ai4bharat/IN22-Gen
-   - `facebook/flores` — https://huggingface.co/datasets/facebook/flores
    - `bodhan-ai/indic-translate` — https://huggingface.co/bodhan-ai/indic-translate
    - `google/gemma-4-E4B-it` — https://huggingface.co/google/gemma-4-E4B-it
 3. Local login:
@@ -33,6 +33,18 @@ All tokens via `HF_TOKEN` (env first, else gitignored `.env` at repo root —
 - GPU + persistence per session: enable GPU accelerator, enable Internet (Hub + dataset
   downloads), and persist `/kaggle/working/run` (checkpoints every 100 steps double as
   Hub resume points — see `docs/TRAINING.md`).
+
+### Getting the code onto Kaggle
+
+The notebooks assume the repo exists at `/kaggle/working/marathi-mt-bodhan`. Get it
+there by either:
+
+- `git clone <private-repo-url>` in the first notebook cell (recommended; a private
+  repo needs a GitHub token in the clone URL), or
+- uploading a repo zip as a Kaggle Dataset and unzipping it in the notebook.
+
+**Never upload `.env`** (it is gitignored and contains tokens) — put `HF_TOKEN` in
+Kaggle Secrets as above.
 
 ## 3. Dependencies — TWO environments (do not mix)
 
@@ -64,7 +76,7 @@ pip install "transformers>=4.33.2,<5" IndicTransToolkit==1.1.1 datasets sacreble
 
 | GPU | Notes |
 | --- | ----- |
-| T4 (preferred for Session A) | bf16 OK (`training.bf16: true` in `configs/base.yaml`); 8B QLoRA seq 1024 batch 1×16 fits with grad checkpointing |
+| T4 (preferred for Session A) | T4 (Turing, sm_75) has **no native bf16** — bf16 is emulated and bitsandbytes 4-bit bf16 compute can error or NaN. Try bf16 first (`training.bf16: true` in `configs/base.yaml`) only if it trains stably; on any NaN/bnb dtype error flip to the fp16 path exactly like the P100 row (`training.bf16: false`, `training.fp16: true`, `model.bnb.compute_dtype: float16`). 8B QLoRA seq 1024 batch 1×16 fits with grad checkpointing |
 | P100 | **No bf16, no FlashAttention-2.** If assigned a P100, flip to the fp16 path (`bf16: false`, `fp16: true`) and expect slower steps; keep seq 1024, do not raise batch |
 | Either | 12h/session cap — rely on save-every-100 + Hub resume, not on finishing in one go |
 

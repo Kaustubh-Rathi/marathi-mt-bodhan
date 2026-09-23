@@ -1,5 +1,9 @@
 # LEAKAGE CHECKLIST — train/test decontamination
 
+> **Status: pending** — populate after the first successful train/eval cycle.
+> The prepare.py decontamination gate (exact + normalized fuzzy overlap vs
+> IN22-Gen/FLORES) must print zero leakage before training launches.
+
 Eval sets (`ai4bharat/IN22-Gen`, `facebook/flores` devtest) are **held out, never
 trained on**. Every gate below must Pass before `make eval` numbers are reported.
 Tooling: `src/mr_mt/data/decontaminate.py` (`pair_hash`, `dedup_against`,

@@ -42,6 +42,7 @@ training:
   max_steps: 1000
   num_train_epochs: 0
   save_steps: 100
+  save_total_limit: 3  # keep only the 3 most recent checkpoints to bound disk growth
   eval_steps: 100
   logging_steps: 10
   bf16: true
@@ -91,13 +92,13 @@ eval:
   benchmarks:
     - name: in22_gen
       dataset: ai4bharat/IN22-Gen
-      config: hin_Deva-mar_Deva
-      split: gen
+      config: null  # IN22-Gen has a single 'default' config; None is valid for load_dataset
+      split: test  # IN22-Gen exposes exactly one split: 'test'
       src_lang: hin_Deva
       tgt_lang: mar_Deva
     - name: flores_devtest
       dataset: facebook/flores
-      config: hin_Deva-mar_Deva
+      config: all  # flores configs are per-language plus 'all'
       split: devtest
       src_lang: hin_Deva
       tgt_lang: mar_Deva

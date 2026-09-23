@@ -141,7 +141,7 @@ def load_indictrans2_model(cfg: dict, adapter: str = ""):
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
     model_cfg = cfg.get("model", {})
-    base = model_cfg.get("name", "ai4bharat/indictrans2-indic-indic-1B")
+    base = model_cfg.get("name", "ai4bharat/indictrans2-indic-indic-dist-320M")
     token = get_hf_token()
 
     try:

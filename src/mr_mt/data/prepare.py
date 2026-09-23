@@ -178,6 +178,11 @@ def build_splits(cfg: dict) -> dict:
             {
                 "src": r.get("src", ""),
                 "tgt": r.get("tgt", ""),
+                # Preserve per-row language tags (eng_Latn->mar_Deva for
+                # the Samanantar fallback); _with_langs only fills from
+                # cfg when these are absent.
+                "src_lang": r.get("src_lang"),
+                "tgt_lang": r.get("tgt_lang"),
                 "domain": r.get("domain", "web"),
             }
             for r in read_jsonl(samanantar_path)
@@ -214,7 +219,13 @@ def build_splits(cfg: dict) -> dict:
             continue
         seen.add(key)
         clean_rows.append(
-            {"src": src, "tgt": tgt, "domain": row.get("domain") or "education"}
+            {
+                "src": src,
+                "tgt": tgt,
+                "src_lang": row.get("src_lang"),
+                "tgt_lang": row.get("tgt_lang"),
+                "domain": row.get("domain") or "education",
+            }
         )
     kept_unique = len(clean_rows)
 
@@ -236,12 +247,14 @@ def build_splits(cfg: dict) -> dict:
 
     # 5. Attach language codes and write.
     def _with_langs(rows: list) -> list:
+        # Preserve per-row language tags when present (Samanantar fallback
+        # rows are eng_Latn->mar_Deva); only stamp cfg defaults when absent.
         return [
             {
                 "src": r["src"],
                 "tgt": r["tgt"],
-                "src_lang": src_lang,
-                "tgt_lang": tgt_lang,
+                "src_lang": r.get("src_lang") or src_lang,
+                "tgt_lang": r.get("tgt_lang") or tgt_lang,
                 "domain": r.get("domain", "education"),
             }
             for r in rows

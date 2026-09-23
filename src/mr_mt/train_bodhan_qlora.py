@@ -17,6 +17,9 @@ Notes
 * TRL 1.6.0 API: :class:`~trl.SFTTrainer` + :class:`~trl.SFTConfig`
   with ``max_length`` (not ``max_seq_length``),
   ``assistant_only_loss=True`` and ``remove_unused_columns=False``.
+  Training data is conversational (``{"messages": [...]}``) and TRL
+  applies the chat template itself, because ``assistant_only_loss`` is
+  incompatible with ``dataset_text_field``/``packing``.
 
 Python 3.11. Importing this module has no side effects.
 """
@@ -41,13 +44,50 @@ from mr_mt import utils as utils_mod
 # ---------------------------------------------------------------------------
 
 
+def _render_user_content(row: dict, cfg: dict) -> str:
+    """Render the user-message content for one ``{"src", "tgt"}`` row.
+
+    Applies ``cfg["data"]["prompt_template"]`` to the source sentence
+    WITHOUT any ``apply_chat_template`` wrapping; TRL applies the chat
+    template itself when training on conversational datasets.
+
+    Args:
+        row: Dataset row with at least ``src`` (and optionally
+            ``src_lang``/``tgt_lang``) keys.
+        cfg: Merged config dict (see ``configs/base.yaml``).
+
+    Returns:
+        The rendered user-turn string.
+    """
+    data_cfg = cfg.get("data", {})
+    template = data_cfg.get("prompt_template", "{src}")
+    src = row.get("src", "")
+    tgt = row.get("tgt", "")
+    src_lang = row.get("src_lang", data_cfg.get("source_lang", ""))
+    tgt_lang = row.get("tgt_lang", data_cfg.get("target_lang", ""))
+    src_lang_name = data_cfg.get("source_lang_name", src_lang or "source")
+    tgt_lang_name = data_cfg.get("target_lang_name", tgt_lang or "target")
+    return template.format(
+        src=src,
+        tgt=tgt,
+        src_lang=src_lang,
+        tgt_lang=tgt_lang,
+        src_lang_name=src_lang_name,
+        tgt_lang_name=tgt_lang_name,
+    )
+
+
 def build_prompt(sample: dict, cfg: dict, tokenizer=None) -> str:
     """Build chat-template-ready training text for one ``{"src", "tgt"}`` row.
 
     The user message is rendered from ``cfg["data"]["prompt_template"]``
     and then wrapped with the model chat template via
-    ``tokenizer.apply_chat_template`` as a user/assistant pair so that
-    ``assistant_only_loss`` can mask the prompt at train time.
+    ``tokenizer.apply_chat_template`` as a user/assistant pair.
+
+    Kept for reference/debugging; the trainer path uses conversational
+    ``{"messages": ...}`` datasets (see :func:`_load_chat_dataset`) and
+    lets TRL apply the chat template so ``assistant_only_loss`` can mask
+    the prompt tokens.
 
     Args:
         sample: Dataset row with at least ``src`` and ``tgt`` keys.
@@ -59,22 +99,8 @@ def build_prompt(sample: dict, cfg: dict, tokenizer=None) -> str:
     Returns:
         Full conversation text including the assistant (target) turn.
     """
-    data_cfg = cfg.get("data", {})
-    template = data_cfg.get("prompt_template", "{src}")
-    src = sample.get("src", "")
+    user_text = _render_user_content(sample, cfg)
     tgt = sample.get("tgt", "")
-    src_lang = sample.get("src_lang", data_cfg.get("source_lang", ""))
-    tgt_lang = sample.get("tgt_lang", data_cfg.get("target_lang", ""))
-    src_lang_name = data_cfg.get("source_lang_name", src_lang or "source")
-    tgt_lang_name = data_cfg.get("target_lang_name", tgt_lang or "target")
-    user_text = template.format(
-        src=src,
-        tgt=tgt,
-        src_lang=src_lang,
-        tgt_lang=tgt_lang,
-        src_lang_name=src_lang_name,
-        tgt_lang_name=tgt_lang_name,
-    )
     if tokenizer is None:
         return user_text
     apply_chat = getattr(tokenizer, "apply_chat_template", None)
@@ -236,15 +262,34 @@ def build_lora(cfg: dict):
 # ---------------------------------------------------------------------------
 
 
-def _load_text_dataset(cfg: dict, tokenizer, split: str = "train"):
-    """Read a JSONL split and format rows into a ``{"text": ...}`` dataset."""
+def _load_chat_dataset(cfg: dict, split: str = "train"):
+    """Read a JSONL split into a conversational ``{"messages": ...}`` dataset.
+
+    Each row becomes ``[{"role": "user", "content": ...},
+    {"role": "assistant", "content": row["tgt"]}]``. TRL applies the
+    model's chat template itself and, with ``assistant_only_loss=True``,
+    masks the prompt tokens. This requires ``{% generation %}`` markers
+    in the model's chat template — this exact stack is known to work
+    with ``bodhan-ai/indic-translate``. If trainer init raises about
+    missing generation markers, switch this dataset to prompt/completion
+    form (``{"prompt": [...], "completion": [...]}``) or set
+    ``assistant_only_loss: false`` in ``configs/base.yaml``.
+    """
     from datasets import Dataset
 
     key = "train_file" if split == "train" else "dev_file"
     path = cfg["data"][key]
     rows = utils_mod.read_jsonl(path)
-    texts = [{"text": build_prompt(r, cfg, tokenizer)} for r in rows]
-    return Dataset.from_list(texts)
+    conversations = [
+        {
+            "messages": [
+                {"role": "user", "content": _render_user_content(r, cfg)},
+                {"role": "assistant", "content": r.get("tgt", "")},
+            ]
+        }
+        for r in rows
+    ]
+    return Dataset.from_list(conversations)
 
 
 def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
@@ -254,9 +299,9 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         cfg: Merged config dict (all ``training.*`` keys are mapped).
         model: 4-bit base model (kbit-prepared inside :func:`main`).
         tokenizer: Tokenizer / processing class.
-        train_dataset: Optional pre-formatted ``datasets.Dataset`` with a
-            ``text`` column. When ``None``, it is loaded from
-            ``cfg["data"]["train_file"]``.
+        train_dataset: Optional pre-formatted conversational
+            ``datasets.Dataset`` with a ``messages`` column. When
+            ``None``, it is loaded from ``cfg["data"]["train_file"]``.
 
     Returns:
         Configured :class:`~trl.SFTTrainer` (not yet trained).
@@ -269,19 +314,16 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
     output_dir = run.get("output_dir", "/kaggle/working/run")
 
     if train_dataset is None:
-        train_dataset = _load_text_dataset(cfg, tokenizer, split="train")
+        train_dataset = _load_chat_dataset(cfg, split="train")
 
     eval_dataset = None
     eval_strategy = "no"
     try:
-        dev_rows = utils_mod.read_jsonl(cfg["data"].get("dev_file", ""))
-        if dev_rows:
-            from datasets import Dataset
-
-            eval_dataset = Dataset.from_list(
-                [{"text": build_prompt(r, cfg, tokenizer)} for r in dev_rows]
-            )
+        eval_dataset = _load_chat_dataset(cfg, split="dev")
+        if len(eval_dataset) > 0:
             eval_strategy = "steps"
+        else:
+            eval_dataset = None
     except Exception:
         eval_dataset = None
         eval_strategy = "no"
@@ -308,12 +350,15 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         report_to=t.get("report_to", ["tensorboard"]),
         logging_dir=t.get("logging_dir", os.path.join(output_dir, "logs")),
         save_strategy="steps",
+        save_total_limit=int(t.get("save_total_limit", 3)),
         push_to_hub=bool(hub.get("push_to_hub", False)),
         hub_model_id=hub.get("repo_id") or None,
         hub_strategy=hub.get("strategy", "all_checkpoints"),
         max_length=int(t.get("max_seq_length", 1024)),
         packing=bool(t.get("packing", False)),
-        dataset_text_field="text",
+        # No dataset_text_field: the dataset is conversational and TRL
+        # applies the chat template; assistant_only_loss is incompatible
+        # with dataset_text_field/packing in TRL 1.6.0.
         assistant_only_loss=bool(t.get("assistant_only_loss", True)),
         remove_unused_columns=False,
     )
