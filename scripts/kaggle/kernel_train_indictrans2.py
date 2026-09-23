@@ -64,3 +64,26 @@ if str(kaggle_env.get_setting("MR_MT_RESUME")).strip().lower() == "auto":
 from mr_mt.train_indictrans2_lora import main  # noqa: E402
 
 main(["--config", CONFIG, *extra, *sys.argv[1:]])
+
+# Post-train evaluation on the just-saved adapter (same VM). Failure here must
+# never fail the training run.
+try:
+    import gc
+
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+    from mr_mt.config import load_base_and_session  # noqa: E402
+    from mr_mt.evaluate import main as eval_main  # noqa: E402
+
+    cfg = load_base_and_session("configs/base.yaml", CONFIG)
+    adapter = str(Path(cfg["run"]["output_dir"]) / "adapter")
+    print(f"[kernel] post-train eval on {adapter}")
+    eval_main(["--config", CONFIG, "--adapter", adapter, "--family", "indictrans2"])
+except Exception as exc:  # noqa: BLE001 - eval must not fail training
+    print(f"[kernel] post-train eval skipped ({exc})", file=sys.stderr)

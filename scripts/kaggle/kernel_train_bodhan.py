@@ -65,4 +65,32 @@ if str(kaggle_env.get_setting("MR_MT_RESUME")).strip().lower() == "auto":
 
 from mr_mt.train_bodhan_qlora import main  # noqa: E402
 
-main(["--config", CONFIG, *extra, *sys.argv[1:]])
+trainer = main(["--config", CONFIG, *extra, *sys.argv[1:]])
+
+# Post-train evaluation on the just-saved adapter (same VM, so the adapter is
+# local; metrics + predictions land in this kernel's output and are pulled to
+# Drive). Failure here must never fail the training run.
+try:
+    import gc
+
+    try:
+        del trainer
+    except Exception:
+        pass
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+    from mr_mt.config import load_base_and_session  # noqa: E402
+    from mr_mt.evaluate import main as eval_main  # noqa: E402
+
+    cfg = load_base_and_session("configs/base.yaml", CONFIG)
+    adapter = str(Path(cfg["run"]["output_dir"]) / "adapter")
+    print(f"[kernel] post-train eval on {adapter}")
+    eval_main(["--config", CONFIG, "--adapter", adapter, "--family", "bodhan"])
+except Exception as exc:  # noqa: BLE001 - eval must not fail training
+    print(f"[kernel] post-train eval skipped ({exc})", file=sys.stderr)
