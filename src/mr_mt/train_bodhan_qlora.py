@@ -37,7 +37,7 @@ import torch
 
 from mr_mt import config as config_mod
 from mr_mt import utils as utils_mod
-from mr_mt.checkpointing import build_mirror_callback
+from mr_mt.checkpointing import build_mirror_callback, upload_run_final
 from mr_mt.compat import supported_kwargs
 from mr_mt.secrets import get_hf_token
 
@@ -592,6 +592,15 @@ def main(argv=None):
         },
         path="reports/experiments.csv",
     )
+
+    # Best-effort end-of-run upload of the final adapter + logs + reports
+    # (checkpoints already streamed per-save by CheckpointMirrorCallback).
+    # Never fails training; kernels call upload_run_final() again after
+    # post-train eval so reports/metrics land on Drive too.
+    try:
+        upload_run_final(cfg)
+    except Exception as exc:  # noqa: BLE001 - never abort training
+        print(f"WARNING: end-of-run Drive upload skipped ({exc}).", file=sys.stderr)
     return trainer
 
 

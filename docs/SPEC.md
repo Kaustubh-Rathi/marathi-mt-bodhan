@@ -126,11 +126,15 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `kaggle_env.latest_confirmed_checkpoint(remote) -> Optional[str]` — highest
   `checkpoint-<N>` under a Drive remote that has the `_upload_complete` marker.
 - `kaggle_env.rclone_fetch(remote_dir, local_dir, includes=None) -> bool`.
-- `kernel_prepare_data.py`, `kernel_train_bodhan.py`, `kernel_train_indictrans2.py`, `kernel_evaluate.py`,
-  `kernel_probe_token.py` — thin
+- `kernel_prepare_data.py`, `kernel_train_bodhan.py`, `kernel_train_ablation.py`,
+  `kernel_train_indictrans2.py`, `kernel_evaluate.py`, `kernel_probe_token.py` — thin
   entrypoints; the train kernels auto-run download+prepare if `data/processed`
-  is missing and honour `MR_MT_RESUME=auto`; the eval kernel auto-fetches the
-  latest confirmed Drive checkpoint when `MR_MT_ADAPTER` is unset; the probe
+  is missing and honour `MR_MT_RESUME=auto`; every `checkpoint-<step>` is
+  auto-uploaded to Drive in the background with a `_upload_complete` marker;
+  the Bodhan train kernels (Session A/C) run in-kernel post-train eval on the
+  just-saved local adapter (never fails training); the eval kernel auto-fetches
+  adapter files only from the latest confirmed Drive checkpoint when
+  `MR_MT_ADAPTER` is unset; the probe
   kernel (tasks `probe`/`probe2`/`probe3`, CPU-only) lists every HF token
   candidate an account can see with `whoami` + gated-repo verdicts.
   `kernel-metadata.*.json` set `kernel_type: script`, GPU, internet,

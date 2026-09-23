@@ -425,10 +425,18 @@ def rclone_fetch(
     includes: Optional[list] = None,
     binary: str = "rclone",
 ) -> bool:
-    """``rclone copy remote_dir local_dir`` (optionally --include-filtered)."""
+    """``rclone copy remote_dir local_dir`` (optionally --include-filtered).
+
+    When ``includes`` is given, a trailing ``--exclude "*"`` is added:
+    rclone includes unmatched files by default, so bare ``--include``
+    filters alone would still copy the whole directory (full optimizer
+    state on eval auto-fetch). The exclude makes the fetch adapter-only.
+    """
     args = ["copy", remote_dir.rstrip("/"), str(local_dir), "--transfers", "8"]
     for pat in includes or []:
         args += ["--include", pat]
+    if includes:
+        args += ["--exclude", "*"]
     try:
         proc = _rclone_cmd(binary, *args)
         if proc.returncode != 0:

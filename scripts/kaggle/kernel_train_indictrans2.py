@@ -87,3 +87,15 @@ try:
     eval_main(["--config", CONFIG, "--adapter", adapter, "--family", "indictrans2"])
 except Exception as exc:  # noqa: BLE001 - eval must not fail training
     print(f"[kernel] post-train eval skipped ({exc})", file=sys.stderr)
+
+# End-of-run upload of the final adapter + logs + reports/metrics/predictions
+# (checkpoints already streamed per-save; train main() already uploaded once
+# before eval, this second pass picks up the eval outputs). Best-effort:
+# never fails the run.
+try:
+    from mr_mt.checkpointing import upload_run_final  # noqa: E402
+    from mr_mt.config import load_base_and_session  # noqa: E402
+
+    upload_run_final(load_base_and_session("configs/base.yaml", CONFIG))
+except Exception as exc:  # noqa: BLE001 - upload must not fail training
+    print(f"[kernel] end-of-run Drive upload skipped ({exc})", file=sys.stderr)

@@ -63,9 +63,14 @@ if not adapter:
             "adapter_*",
             "tokenizer*",
             "special_tokens_map.json",
+            "vocab.json",
+            "merges.txt",
+            "*.model",
             "chat_template.jinja",
             "processor_config.json",
             "preprocessor_config.json",
+            "generation_config.json",
+            "config.json",
         ],
     ):
         raise SystemExit(f"Adapter fetch failed from {latest}")

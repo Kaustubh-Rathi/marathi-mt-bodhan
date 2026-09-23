@@ -448,3 +448,118 @@ def build_mirror_callback(cfg: dict) -> CheckpointMirrorCallback:
         keep_local=int(ck.get("keep_local", 2)),
         max_pending=int(ck.get("max_pending", 2)),
     )
+
+
+def run_remote_for(rclone_remote: str) -> str:
+    """Return the per-run Drive dir for a ``.../<run>/checkpoints`` remote.
+
+    Session configs point ``checkpointing.rclone_remote`` at
+    ``gdrive:mr-mt-edu-2026/<run>/checkpoints``; the end-of-run upload
+    targets the parent ``gdrive:mr-mt-edu-2026/<run>`` so the final
+    adapter/logs/reports sit next to (not inside) ``checkpoints/``.
+    A remote without the ``/checkpoints`` suffix is returned unchanged.
+    """
+    remote = (rclone_remote or "").strip().rstrip("/")
+    if remote.endswith("/checkpoints"):
+        parent = remote[: -len("/checkpoints")]
+        return parent or remote
+    return remote
+
+
+def upload_run_final(
+    cfg: dict,
+    reports_dir: str = "reports",
+    timeout: int = 900,
+) -> bool:
+    """Best-effort end-of-run upload of everything *except* streamed checkpoints.
+
+    Copies ``<output_dir>`` minus ``checkpoint-*/`` (already mirrored per-save
+    by :class:`CheckpointMirrorCallback`) to ``<run>/`` on Drive, plus the
+    repo ``reports/`` tree (metrics.json, predictions/, experiments.csv) to
+    ``<run>/reports/``. Uses synchronous ``rclone copy`` calls; any failure
+    (no remote configured, missing binary, network error) is logged and
+    returns ``False`` — never raises, so training can call this
+    unconditionally at the end of a run (and kernels again after post-train
+    eval, which writes ``reports/`` after ``main()`` returns).
+    """
+    ck = cfg.get("checkpointing", {}) or {}
+    rclone_remote = (ck.get("rclone_remote", "") or "").strip()
+    binary = ck.get("rclone_binary", "rclone") or "rclone"
+    output_dir = Path((cfg.get("run", {}) or {}).get("output_dir", ""))
+    if not rclone_remote:
+        print("[checkpointing] final upload skipped (no rclone_remote configured).")
+        return False
+    if shutil.which(binary) is None:
+        print(
+            f"[checkpointing] final upload skipped: "
+            f"rclone binary '{binary}' not found.",
+            file=sys.stderr,
+        )
+        return False
+    run_remote = run_remote_for(rclone_remote)
+    jobs: list = []
+    if output_dir.is_dir():
+        jobs.append(
+            (
+                [
+                    binary,
+                    "copy",
+                    str(output_dir),
+                    run_remote,
+                    "--exclude",
+                    "checkpoint-*/**",
+                    "--exclude",
+                    "checkpoint-*",
+                    "--transfers",
+                    "4",
+                ],
+                f"{output_dir} -> {run_remote} (excl. checkpoint-*)",
+            )
+        )
+    else:
+        print(
+            f"[checkpointing] final upload: output_dir {output_dir} "
+            "missing; skipping output_dir copy."
+        )
+    reports = Path(reports_dir)
+    if reports.is_dir():
+        jobs.append(
+            (
+                [
+                    binary,
+                    "copy",
+                    str(reports),
+                    f"{run_remote}/reports",
+                    "--transfers",
+                    "4",
+                ],
+                f"{reports} -> {run_remote}/reports",
+            )
+        )
+    if not jobs:
+        return False
+    ok = True
+    for cmd, label in jobs:
+        try:
+            print(f"[checkpointing] final upload: {label}")
+            proc = subprocess.run(  # noqa: S603 - controlled args
+                cmd, capture_output=True, text=True, timeout=timeout
+            )
+        except Exception as exc:  # noqa: BLE001 - best effort
+            print(
+                f"[checkpointing] final upload FAILED for {label} ({exc}).",
+                file=sys.stderr,
+            )
+            ok = False
+            continue
+        if proc.returncode != 0:
+            err = (proc.stderr or "").strip()[:300]
+            print(
+                f"[checkpointing] final upload FAILED for {label} "
+                f"(rc={proc.returncode}): {err}",
+                file=sys.stderr,
+            )
+            ok = False
+        else:
+            print(f"[checkpointing] final upload done: {label}")
+    return ok

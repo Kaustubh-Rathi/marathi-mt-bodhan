@@ -146,3 +146,24 @@ Verified locally: the callback uploaded a checkpoint to
 
 HF Hub push is optional and off by default (`hub.push_to_hub`, real
 `hub.repo_id`, write-role token).
+
+## Evaluation
+
+* **In-kernel post-train eval (Sessions A/C):** `kernel_train_bodhan.py` and
+  `kernel_train_ablation.py` run `mr_mt.evaluate` on the just-saved local
+  `<output_dir>/adapter` after training (same VM, no download). Metrics +
+  predictions land in the kernel output; eval failure never fails training.
+* **Standalone eval kernel (task `eval`, acct1):** `kernel_evaluate.py` calls
+  `mr_mt.evaluate.main(["--config", cfg, "--adapter", path, "--family", family])`.
+  `MR_MT_ADAPTER` empty (default) = auto-fetch adapter/tokenizer files only
+  (`--include` + `--exclude "*"`) from the latest `_upload_complete`-marked
+  checkpoint under the session's `checkpointing.rclone_remote` (bodhan →
+  Session A remote, indictrans2 → Session B remote). Set `MR_MT_ADAPTER` to a
+  path/HF id to score that adapter instead. Needs the `gdrive-creds` dataset
+  (already in `kernel-metadata.eval.json`).
+* Benchmarks come from `configs/base.yaml` (`in22_gen`: `ai4bharat/IN22-Gen`,
+  config null, split `test`; `flores_devtest`: `facebook/flores`,
+  `eng_Latn-mar_Deva`, split `devtest`; direction `eng_Latn->mar_Deva`
+  throughout). Outputs: `reports/metrics.json`,
+  `reports/predictions/*_preds.txt` + `*_refs.txt`, `samples.md`, plus an
+  `eval` row in `reports/experiments.csv`.
