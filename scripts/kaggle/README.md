@@ -18,11 +18,11 @@ optional rclone), then calls the corresponding `mr_mt` module.
 
 Account → task mapping (each account runs its own kernel):
 
-| Task | `kernel-metadata.*.json` id | HF-token dataset |
-| ---- | --------------------------- | ---------------- |
-| prepare_data | `acajjhfh/marathi-mt-prepare-data` | `acajjhfh/hf-token` |
-| train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-train` | `kaustubhcrathi/hf-token` |
-| train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-train` | `dreamexcellence/hf-token` |
+| Task | `kernel-metadata.*.json` id | Datasets attached |
+| ---- | --------------------------- | ----------------- |
+| prepare_data | `acajjhfh/marathi-mt-prepare-data` | `acajjhfh/hf-token`, `acajjhfh/gdrive-creds` |
+| train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-train` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` |
+| train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-train` | `dreamexcellence/hf-token`, `dreamexcellence/gdrive-creds` |
 | evaluate | `kaustubhcrathi/marathi-mt-evaluate` | `kaustubhcrathi/hf-token` |
 
 ## Launch
@@ -64,12 +64,21 @@ pushing.
 ## Checkpoints
 
 Training keeps **all** full checkpoints (`save_total_limit: null`,
-`save_only_model: false`) in the run's `output_dir`; the authoritative Drive copy
-comes from `scripts/pull_kaggle_output.ps1` -> `scripts/sync_drive.ps1`.
+`save_only_model: false`) and streams each one to Drive live:
 
-For timeout resilience, set `checkpointing.rclone_remote` in the cell config and
-mount rclone + OAuth creds as a private Dataset (`gdrive-creds`);
-`bootstrap._configure_rclone()` wires `RCLONE_CONFIG*` automatically. Set
-`checkpointing.adapter_only_copy: true` to mirror small adapter-only copies
-instead of the full checkpoints. HF Hub push is optional and off by default
-(`hub.push_to_hub`, real `hub.repo_id`, write-role token).
+* Each account has a private **`gdrive-creds`** Dataset containing `rclone.conf`.
+  It is attached via `dataset_sources`; `bootstrap.activate()` sets
+  `RCLONE_CONFIG`, downloads the static rclone binary to `/kaggle/working/bin`
+  if absent, and puts it on `PATH`.
+* `checkpointing.rclone_remote` in each cell config points at
+  `gdrive:mr-mt-edu-2026/<run>/checkpoints`; `CheckpointMirrorCallback` rclones
+  each `checkpoint-<step>` as it is written (full optimizer state by default;
+  set `checkpointing.adapter_only_copy: true` for small adapter-only copies).
+* The post-run `scripts/pull_kaggle_output.ps1` -> `scripts/sync_drive.ps1` flow
+  remains available as a fallback/backfill.
+
+Verified locally: the callback uploaded a checkpoint to
+`gdrive:mr-mt-edu-2026/.../checkpoint-7`.
+
+HF Hub push is optional and off by default (`hub.push_to_hub`, real
+`hub.repo_id`, write-role token).

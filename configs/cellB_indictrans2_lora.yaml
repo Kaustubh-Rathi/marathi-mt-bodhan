@@ -52,4 +52,4 @@ training:
 checkpointing:
   mirror_dir: /kaggle/working/cellB/checkpoint_mirror
   adapter_only_copy: false
-  rclone_remote: ""
+  rclone_remote: "gdrive:mr-mt-edu-2026/indictrans2-lora/checkpoints"

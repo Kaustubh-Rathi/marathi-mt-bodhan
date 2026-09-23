@@ -17,9 +17,11 @@ No secrets are ever written to disk here.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 DEFAULT_REPO_URL = "https://github.com/Kaustubh-Rathi/marathi-mt-bodhan.git"
 REPO_DIR_ENV = "MR_MT_REPO_DIR"
@@ -95,21 +97,90 @@ def _install_deps(stack: str) -> None:
     )
 
 
+def _find_rclone_conf() -> Optional[str]:
+    """Locate an rclone config mounted from a private Kaggle Dataset."""
+    candidates = [
+        Path("/kaggle/input/gdrive-creds/rclone.conf"),
+        Path("/kaggle/input/rclone-creds/rclone.conf"),
+    ]
+    input_root = Path("/kaggle/input")
+    if input_root.is_dir():
+        candidates += sorted(input_root.rglob("rclone.conf"))
+    for cand in candidates:
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def _ensure_rclone() -> Optional[str]:
+    """Return an rclone executable, downloading the static Linux binary if needed.
+
+    Kaggle images do not ship rclone; we fetch the official build into
+    ``/kaggle/working/bin`` so ``subprocess.run(["rclone", ...])`` works.
+    """
+    exe = shutil.which("rclone")
+    if exe:
+        return exe
+    if sys.platform != "linux":
+        return None
+    target = Path("/kaggle/working/bin/rclone")
+    if target.is_file():
+        target.chmod(0o755)
+        return str(target)
+    try:
+        import io
+        import urllib.request
+        import zipfile
+
+        url = "https://downloads.rclone.org/rclone-current-linux-amd64.zip"
+        print(f"[bootstrap] downloading rclone from {url}")
+        with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310
+            blob = resp.read()
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            member = next(n for n in zf.namelist() if n.endswith("/rclone"))
+            data = zf.read(member)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        target.chmod(0o755)
+        return str(target)
+    except Exception as exc:  # noqa: BLE001 - best effort
+        print(f"[bootstrap] rclone download failed ({exc}).", file=sys.stderr)
+        return None
+
+
 def _configure_rclone() -> None:
-    """If credentials are mounted, point rclone at them via env vars."""
+    """Point rclone at mounted credentials and ensure the binary is available.
+
+    Preferred: a private ``gdrive-creds`` Dataset containing ``rclone.conf``
+    (OAuth user token, works with a personal Drive). Also supports a service
+    account (``sa.json``) via ``RCLONE_CONFIG_*`` env vars.
+    """
+    conf = _find_rclone_conf()
+    if conf:
+        os.environ["RCLONE_CONFIG"] = conf
+        exe = _ensure_rclone()
+        if exe:
+            os.environ["PATH"] = (
+                str(Path(exe).parent) + os.pathsep + os.environ.get("PATH", "")
+            )
+            print(f"[bootstrap] rclone={exe} config={conf}")
+        else:
+            print(
+                "[bootstrap] rclone config found but binary unavailable; "
+                "checkpoint mirroring will log and skip.",
+                file=sys.stderr,
+            )
+        return
+
     token_dir = Path("/kaggle/input/gdrive-creds")
     if not token_dir.is_dir():
         return
-    # rclone reads RCLONE_CONFIG_<REMOTE>_* env vars without a config file.
     sa = token_dir / "sa.json"
-    conf = token_dir / "rclone.conf"
     if sa.is_file():
-        os.environ.setdefault("RCLONE_CONFIG", str(conf) if conf.is_file() else "")
         os.environ.setdefault("RCLONE_CONFIG_GDRIVE_TYPE", "drive")
         os.environ.setdefault("RCLONE_CONFIG_GDRIVE_SCOPE", "drive")
         os.environ.setdefault("RCLONE_CONFIG_GDRIVE_SERVICE_ACCOUNT_FILE", str(sa))
-    if conf.is_file():
-        os.environ.setdefault("RCLONE_CONFIG", str(conf))
+        _ensure_rclone()
 
 
 def activate(stack: str = "bodhan") -> Path:

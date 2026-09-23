@@ -39,9 +39,11 @@ Code delivery: `bootstrap.py` locates the repo at `MR_MT_REPO_DIR`
 (default `/kaggle/working/marathi-mt-bodhan`) and `git clone`s it from
 `MR_MT_REPO_URL` if missing. **Never put `.env` or the token in the repo.**
 
-Optional: for live checkpoint mirroring to Drive, create a private Dataset
-`gdrive-creds` containing your rclone config/`sa.json`; `bootstrap._configure_rclone()`
-wires `RCLONE_CONFIG*` env vars automatically.
+**Live Drive mirror (wired):** each account has a private `gdrive-creds` Dataset
+containing `rclone.conf`; `bootstrap._configure_rclone()` points `RCLONE_CONFIG` at
+it and installs the static rclone binary to `/kaggle/working/bin` if absent. The
+cell configs set `checkpointing.rclone_remote`, so every checkpoint is rcloned to
+Drive during training (see [TRAINING.md](TRAINING.md)).
 
 ### GPU + persistence
 

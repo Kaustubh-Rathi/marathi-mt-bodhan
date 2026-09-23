@@ -76,22 +76,22 @@ under `output_dir`; the default is `None` = fresh start).
 `/kaggle/working` is ephemeral and only saved on a successful run, so checkpoints
 must be copied off the VM:
 
-1. **Drive (authoritative):** full checkpoints are written to the run's
-   `output_dir`; `scripts/pull_kaggle_output.ps1` → `scripts/sync_drive.ps1` copies
-   the whole tree to `gdrive:mr-mt-edu-2026/<run>/`. Default
-   `checkpointing.adapter_only_copy: false` keeps the **full** (resumeable)
-   checkpoints.
-2. **Live Drive mirror (optional, timeout-proof):** set
-   `checkpointing.rclone_remote` (e.g. `gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints`)
-   and mount rclone + creds; `CheckpointMirrorCallback` then `rclone copy`s each
-   `checkpoint-<step>` during training. With `adapter_only_copy: true` it mirrors
-   small adapter-only copies instead of the full checkpoints.
+1. **Live Drive mirror (active):** each account has a private `gdrive-creds`
+   Dataset with `rclone.conf`; `bootstrap.activate()` installs the rclone binary
+   and points `RCLONE_CONFIG` at it. `checkpointing.rclone_remote` in the cell
+   configs (e.g. `gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints`) makes
+   `CheckpointMirrorCallback` rclone each `checkpoint-<step>` to Drive as it is
+   saved. Default `adapter_only_copy: false` keeps **full** (resumeable)
+   checkpoints; set `true` for small adapter-only copies.
+2. **Post-run Drive sync (fallback/backfill):** `scripts/pull_kaggle_output.ps1`
+   → `scripts/sync_drive.ps1` copies the whole run tree to
+   `gdrive:mr-mt-edu-2026/<run>/`.
 3. **HF Hub (optional, off by default):** set `hub.push_to_hub: true` + a real
    `hub.repo_id` + a **write-role** token; `hub.strategy: all_checkpoints` streams
    every checkpoint for cross-session resume.
 
-> The shipped cell configs have `push_to_hub: false` and `rclone_remote: ""`, so the
-> guaranteed Drive path is (1). Enable (2) or (3) if you need timeout resilience.
+> Verified locally: the mirror callback uploads a checkpoint to
+> `gdrive:mr-mt-edu-2026/.../checkpoint-<step>`.
 
 ## What to monitor
 

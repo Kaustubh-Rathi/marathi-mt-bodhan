@@ -28,4 +28,4 @@ hub:
 checkpointing:
   mirror_dir: /kaggle/working/cellA/checkpoint_mirror
   adapter_only_copy: false
-  rclone_remote: ""   # set to e.g. gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints
+  rclone_remote: "gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints"

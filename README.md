@@ -97,13 +97,13 @@ Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.load_cell_co
 Training keeps **all** checkpoints (`save_total_limit: null`) with full optimizer
 state (`save_only_model: false`), and gets them off the ephemeral Kaggle VM:
 
-1. **Drive (authoritative, deliverable):** full checkpoints live in the run's
-   `output_dir`; `scripts/pull_kaggle_output.ps1` → `scripts/sync_drive.ps1`
-   copies the whole tree to `gdrive:mr-mt-edu-2026/<run>/`.
-2. **Live Drive mirror (optional):** `CheckpointMirrorCallback` can `rclone copy`
-   each checkpoint to Drive during training — set `checkpointing.rclone_remote`
-   and provide rclone + creds on the VM. With `adapter_only_copy: true` it mirrors
-   small adapter-only copies instead of the full checkpoints.
+1. **Live Drive mirror (active):** each account has a private `gdrive-creds`
+   Dataset (`rclone.conf`); `bootstrap` installs rclone and points `RCLONE_CONFIG`
+   at it, and `CheckpointMirrorCallback` rclones each checkpoint to
+   `gdrive:mr-mt-edu-2026/<run>/checkpoints` as it is saved (full checkpoints by
+   default; `adapter_only_copy: true` for small adapter-only copies).
+2. **Post-run Drive sync (fallback):** `scripts/pull_kaggle_output.ps1` →
+   `scripts/sync_drive.ps1` copies the whole run tree to `gdrive:mr-mt-edu-2026/<run>/`.
 3. **HF Hub (optional, off by default):** set `hub.push_to_hub: true` + a real
    `hub.repo_id` + a write-role token; `hub.strategy: all_checkpoints` then
    streams every checkpoint for cross-session resume.
