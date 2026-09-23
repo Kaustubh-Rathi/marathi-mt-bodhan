@@ -100,10 +100,10 @@ def _parse_coild_file(path: Path, default_domain: str = "education") -> list:
         if _looks_like_header(cells):
             continue
         if len(cells) >= 4:
-            _id, src, tgt = cells[0], cells[1], cells[2]
+            src, tgt = cells[1], cells[2]  # cells[0] is the row id (unused)
             domain = "|".join(cells[3:]) or default_domain
         elif len(cells) == 3:
-            _id, src, tgt = cells[0], cells[1], cells[2]
+            src, tgt = cells[1], cells[2]  # cells[0] is the row id (unused)
             domain = default_domain
         else:  # 2 columns: src | tgt
             src, tgt = cells[0], cells[1]

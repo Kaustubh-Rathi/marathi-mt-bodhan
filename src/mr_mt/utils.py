@@ -10,12 +10,12 @@ import json
 import os
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 EXPERIMENT_COLUMNS: List[str] = [
     "run_id",
     "account",
-    "cell",
+    "session",
     "base_model",
     "method",
     "r",
@@ -84,7 +84,3 @@ def log_experiment(row: dict, path: str = "reports/experiments.csv") -> None:
         if not exists:
             writer.writeheader()
         writer.writerow(row)
-
-
-def count_words(text: str) -> int:
-    return len(str(text).split())

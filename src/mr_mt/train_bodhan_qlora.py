@@ -395,9 +395,9 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
 
 def _resolve_session_config(config_path: str) -> dict:
     """Load base.yaml then deep-merge the requested session config on top."""
-    cell_path = Path(config_path)
-    base_path = cell_path.parent / "base.yaml"
-    return config_mod.load_base_and_session(str(base_path), str(cell_path))
+    session_path = Path(config_path)
+    base_path = session_path.parent / "base.yaml"
+    return config_mod.load_base_and_session(str(base_path), str(session_path))
 
 
 def main(argv=None):
@@ -512,7 +512,7 @@ def main(argv=None):
         {
             "run_id": cfg["run"].get("name", ""),
             "account": cfg["run"].get("account", ""),
-            "cell": cfg["run"].get("cell", cfg["run"].get("name", "")),
+            "session": cfg["run"].get("name", ""),
             "base_model": cfg["model"].get("name", ""),
             "method": "qlora",
             "r": lora_cfg.get("r", ""),

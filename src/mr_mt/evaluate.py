@@ -25,7 +25,7 @@ Outputs (relative to repo root / CWD):
   - ``reports/predictions/<name>_preds.txt`` and ``<name>_refs.txt``
   - ``reports/metrics.json`` (merged across benchmarks)
   - ``reports/predictions/samples.md`` (20 side-by-side src/ref/pred rows)
-  - one appended row in ``reports/experiments.csv`` (``cell="eval"``)
+  - one appended row in ``reports/experiments.csv`` (``session="eval"``)
 
 Python 3.11. No hard-coded tokens: gated downloads use
 ``mr_mt.secrets.get_hf_token``.
@@ -37,7 +37,7 @@ import argparse
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from mr_mt.config import load_session_config
 from mr_mt.secrets import get_hf_token
@@ -504,7 +504,7 @@ def main(argv: Optional[List[str]] = None) -> dict:
     log_experiment(
         {
             "run_id": f"eval-{args.family}-{time.strftime('%Y%m%d-%H%M%S')}",
-            "cell": "eval",
+            "session": "eval",
             "base_model": cfg.get("model", {}).get("name", ""),
             "method": f"eval-{args.family}",
             "dev_chrf": first.get("chrf", ""),

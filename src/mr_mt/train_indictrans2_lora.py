@@ -224,9 +224,9 @@ def main(argv=None) -> None:
     )
     args = parser.parse_args(argv)
 
-    cell_path = Path(args.config)
-    base_path = Path(args.base) if args.base else cell_path.parent / "base.yaml"
-    cfg = load_base_and_session(base_path, cell_path)
+    session_path = Path(args.config)
+    base_path = Path(args.base) if args.base else session_path.parent / "base.yaml"
+    cfg = load_base_and_session(base_path, session_path)
 
     set_seed(int(cfg["run"].get("seed", 42)))
     output_dir = Path(cfg["run"]["output_dir"])
@@ -313,7 +313,7 @@ def main(argv=None) -> None:
     log_experiment(
         {
             "run_id": cfg["run"].get("name", "sessionB_indictrans2_lora"),
-            "cell": "sessionB",
+            "session": "sessionB",
             "base_model": cfg["model"]["name"],
             "method": "lora-seq2seq",
             "r": cfg.get("lora", {}).get("r", 16),

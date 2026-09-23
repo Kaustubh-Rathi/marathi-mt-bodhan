@@ -1,4 +1,4 @@
-"""Kaggle environment setup for *script* kernels and local runs (formerly bootstrap.py).
+"""Kaggle environment setup for *script* kernels and local runs.
 
 Kaggle script kernels upload only the single ``code_file``, so these run scripts
 must locate the repo themselves. Call :func:`activate` first; it:

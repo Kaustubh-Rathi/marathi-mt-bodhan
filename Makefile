@@ -25,7 +25,7 @@ data:
 train-a:
 	$(PYTHON) -m mr_mt.train_bodhan_qlora --config $(SESSION_A)
 
-# Session B (Acct2): fallback IndicTrans2-200M LoRA (separate env, see docs/SETUP.md)
+# Session B (Acct2): fallback IndicTrans2 indic-indic-dist-320M LoRA (separate env, see docs/SETUP.md)
 train-b:
 	$(PYTHON) -m mr_mt.train_indictrans2_lora --config $(SESSION_B)
 

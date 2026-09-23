@@ -75,9 +75,6 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `plot_length_hist(rows, out_png)`
 - `plot_metric_bars(metrics: dict, out_png)`
 
-### mr_mt/tracking.py
-- `TBLogger` thin wrapper; `append_run(run: dict, path="reports/experiments.csv")`.
-
 ### mr_mt/checkpointing.py
 - `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote,
   rclone_binary, keep_local, max_pending)` — TrainerCallback. `on_save`:

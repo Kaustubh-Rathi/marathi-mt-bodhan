@@ -1,4 +1,4 @@
-# Session B — Session B fallback: IndicTrans2 LoRA (hin_Deva -> mar_Deva).
+# Session B — fallback: IndicTrans2 LoRA (hin_Deva -> mar_Deva).
 # Deep-merged on top of configs/base.yaml via mr_mt.config.load_base_and_session.
 # Session B runs on a SEPARATE env from Session A (see requirements.txt):
 # transformers>=4.33.2,<5 + IndicTransToolkit==1.1.1, because the IndicTrans2

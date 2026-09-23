@@ -1,10 +1,9 @@
-# Session A: Bodhan Gemma-4 QLoRA main run (Session A primary).
+# Session A: Bodhan Gemma-4 QLoRA (primary run).
 # Deep-merged on top of configs/base.yaml via
 # mr_mt.config.load_base_and_session. Only overrides are listed here.
 
 run:
   name: sessionA_bodhan_qlora
-  cell: sessionA_bodhan_qlora
   output_dir: /kaggle/working/sessionA
 
 lora:

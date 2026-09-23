@@ -69,7 +69,7 @@ the kill is skipped) and passes the flag for you.
    `PYTHONPATH=src python -m mr_mt.train_bodhan_qlora --config configs/sessionA_bodhan_qlora.yaml --resume_from_checkpoint /kaggle/working/sessionA/checkpoint-600`
    (or `bash scripts/run_train_sessionA.sh --resume_from_checkpoint <dir>` — the
    launcher forwards `"$@"`). `reports/experiments.csv` gets a continuation row
-   via `mr_mt.tracking.append_run` (do not overwrite the prior row).
+   via `mr_mt.utils.log_experiment` (do not overwrite the prior row).
 
 > Cross-session resume works through the Drive mirror by default (rclone). The
 > Hub is an optional second channel requiring ALL of: `hub.push_to_hub: true`
