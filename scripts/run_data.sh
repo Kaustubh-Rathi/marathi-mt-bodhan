@@ -2,6 +2,7 @@
 # Download raw data + benchmarks, then build train/dev/test splits.
 # Usage: bash scripts/run_data.sh [configs/base.yaml]
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 CONFIG="${1:-configs/base.yaml}"
 export PYTHONPATH="src:${PYTHONPATH:-}"

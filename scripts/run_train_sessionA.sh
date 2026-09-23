@@ -3,6 +3,7 @@
 # Usage: HF_TOKEN=... bash scripts/run_train_sessionA.sh [--resume_from_checkpoint ...]
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
 export PYTHONPATH=src:${PYTHONPATH:-}
 
 if [ -z "${HF_TOKEN:-}" ]; then

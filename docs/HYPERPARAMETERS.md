@@ -22,7 +22,7 @@ change only what the assignment forces (Marathi target, Education_v2 data).
 | `lora.dropout: 0.05` | 0.05 | Light regularization for 8k rows. | Raise to 0.1 if dev loss diverges from train. |
 | `training.learning_rate: 1e-4` | 1e-4 | Proven on this stack; QLoRA typical band is 1e-4–2e-4. | NaN/spikes → 5e-5. Plateaued high loss → 2e-4. |
 | `lr_scheduler_type: cosine_with_min_lr` + `min_lr_rate: 0.1` | cosine, 10% floor | Smooth decay for convergence without killing tail-end learning; proven. | Fixed. |
-| `warmup_ratio: 0.03` | 3% (30 steps) | Standard short-run warmup; stabilizes 8-bit Adam without burning budget. | Fixed. |
+| `warmup_ratio: 0.03` | 3% (30 steps) | Standard short-run warmup; stabilizes 8-bit Adam without burning budget. transformers 5.x folded this into `warmup_steps` (float in `[0, 1)` = ratio) and deprecates `warmup_ratio`, so Session A forwards the ratio through `warmup_steps` (`_warmup_value`). | Fixed. |
 | `max_seq_length: 1024` | 1024 | Rows are ≤100 words (prepare filters), so 1024 covers p99 + template overhead; attention cost grows steeply with length on T4. | OOM → 768 (near-zero truncation at the 100-word cap). |
 | `per_device_train_batch_size: 1` × `gradient_accumulation_steps: 16` | eff. 16 | VRAM-bound at 8B/4-bit/seq-1024; eff 16 gives stable gradients. | VRAM headroom >2GB → bs=4/accum=4 (same eff 16), ~10-20% faster steps. Only after smoke test. |
 | `max_steps: 1000` (= 2 epochs of 8k) | 1000 | 1000 × 16 = 16k samples = 2 epochs — proven; a 3rd epoch overfits 8k rows. | Deadline pressure → 600-800 (checkpoints every 100, stop anywhere). |
@@ -39,7 +39,7 @@ change only what the assignment forces (Marathi target, Education_v2 data).
 | --- | --- | --- |
 | `model.name` | indictrans2-indic-indic-dist-320M | The en-indic checkpoint CANNOT encode Hindi source (English-source only) — indic-indic is mandatory for hin→mar. |
 | `lora.r:16/alpha:32/dropout:0.1`, targets `q_proj,k_proj` | small | 320M seq2seq needs far less adapter capacity than 8B; q/k-only mirrors known-good IndicTrans2 LoRA fine-tunes; heavier dropout suits the small model. |
-| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 320M. |
+| `learning_rate: 2e-4`, `inverse_sqrt`, `warmup_steps: 1000` | — | inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 320M. Session B runs transformers 4.x, where `warmup_ratio: 0.03` (from base.yaml) is passed through the still-valid `warmup_ratio` keyword (`warmup_steps` stays 0 so the ratio applies). |
 | `max_seq_length: 256` | 256 | Sentence-level MT; IndicTrans2 convention. |
 | `per_device 8 × accum 16` (eff 128) | 128 | Standard NMT token-batch equivalent for stable seq2seq gradients. |
 | `max_steps: 3000`, save/eval 500 | — | 3000 × 128 ≈ 48 passes over 8k — small model, needs many epochs; small checkpoints, so 500-step cadence is cheap. |

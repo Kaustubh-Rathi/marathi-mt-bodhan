@@ -31,6 +31,7 @@ marathi-mt-bodhan/
 │   ├── secrets.py             # get_hf_token (Kaggle Secret/Dataset/env/.env)
 │   ├── utils.py               # seeds, JSONL IO, experiments.csv append
 │   ├── checkpointing.py       # CheckpointMirrorCallback (background rclone mirror + pruning)
+│   ├── compat.py              # supported_kwargs: keyword/version compat for the two transformers stacks
 │   ├── data/                  # download.py, prepare.py, decontaminate.py
 │   ├── train_bodhan_qlora.py  # Session A (primary, 8B QLoRA)
 │   ├── train_indictrans2_lora.py  # Session B (fallback, 320M LoRA)

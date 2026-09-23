@@ -38,6 +38,7 @@ import torch
 from mr_mt import config as config_mod
 from mr_mt import utils as utils_mod
 from mr_mt.checkpointing import build_mirror_callback
+from mr_mt.compat import supported_kwargs
 from mr_mt.secrets import get_hf_token
 
 
@@ -294,6 +295,20 @@ def _load_chat_dataset(cfg: dict, split: str = "train"):
     return Dataset.from_list(conversations)
 
 
+def _warmup_value(t: dict):
+    """Return the warmup argument for transformers 5.x ``warmup_steps``.
+
+    transformers 5.x folded ``warmup_ratio`` into ``warmup_steps``: an int means
+    exact steps, a float in ``[0, 1)`` means a ratio of total steps, and the
+    standalone ``warmup_ratio`` keyword is deprecated there. An explicit
+    ``training.warmup_steps`` wins; otherwise the configured ratio is forwarded.
+    """
+    steps = t.get("warmup_steps")
+    if steps:
+        return steps
+    return float(t.get("warmup_ratio", 0.03))
+
+
 def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
     """Build the TRL 1.6.0 :class:`~trl.SFTTrainer` for QLoRA SFT.
 
@@ -336,7 +351,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         gradient_accumulation_steps=int(t.get("gradient_accumulation_steps", 16)),
         learning_rate=float(t.get("learning_rate", 1.0e-4)),
         lr_scheduler_type=t.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=float(t.get("warmup_ratio", 0.03)),
+        warmup_steps=_warmup_value(t),  # 5.x: float <1.0 = ratio (warmup_ratio is deprecated)
         max_steps=int(t.get("max_steps", 1000)),
         num_train_epochs=t.get("num_train_epochs", 0),
         save_steps=int(t.get("save_steps", 100)),
@@ -374,18 +389,38 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
     if t.get("neftune_noise_alpha") is not None:
         sft_kwargs["neftune_noise_alpha"] = t["neftune_noise_alpha"]
 
+    # Version-drift guard: Session A pins transformers 5.13.1 (names verified
+    # against that release), but a renamed/moved keyword in a future build must
+    # degrade to a warning instead of a TypeError after the model has loaded.
+    sft_kwargs, dropped = supported_kwargs(SFTConfig, sft_kwargs)
+    if dropped:
+        print(
+            f"WARNING: SFTConfig does not accept {dropped} in this transformers "
+            "build; dropped. Check the keyword names against "
+            "docs/HYPERPARAMETERS.md.",
+            file=sys.stderr,
+        )
     args = SFTConfig(**sft_kwargs)
     callback = build_mirror_callback(cfg)
-    trainer = SFTTrainer(
-        model=model,
-        args=args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        processing_class=tokenizer,
-        peft_config=build_lora(cfg),
-        callbacks=[callback],
+    trainer_kwargs, trainer_dropped = supported_kwargs(
+        SFTTrainer,
+        {
+            "model": model,
+            "args": args,
+            "train_dataset": train_dataset,
+            "eval_dataset": eval_dataset,
+            "processing_class": tokenizer,
+            "peft_config": build_lora(cfg),
+            "callbacks": [callback],
+        },
     )
-    return trainer
+    if trainer_dropped:
+        print(
+            f"WARNING: SFTTrainer does not accept {trainer_dropped} in this TRL "
+            "build; dropped.",
+            file=sys.stderr,
+        )
+    return SFTTrainer(**trainer_kwargs)
 
 
 # ---------------------------------------------------------------------------

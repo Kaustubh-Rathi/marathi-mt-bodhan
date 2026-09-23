@@ -17,6 +17,7 @@ Run as a module (``src`` must be on PYTHONPATH)::
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 try:
@@ -37,6 +38,7 @@ from transformers import (
 )
 
 from mr_mt.checkpointing import build_mirror_callback
+from mr_mt.compat import supported_kwargs
 from mr_mt.config import load_base_and_session
 from mr_mt.secrets import get_hf_token
 from mr_mt.utils import ensure_dir, log_experiment, read_jsonl, set_seed
@@ -154,7 +156,7 @@ def build_trainer(
     """
     t = cfg["training"]
     hub = cfg.get("hub", {})
-    args = Seq2SeqTrainingArguments(
+    args_kwargs = dict(
         output_dir=cfg["run"]["output_dir"],
         per_device_train_batch_size=int(t.get("per_device_train_batch_size", 8)),
         per_device_eval_batch_size=int(t.get("per_device_eval_batch_size", 8)),
@@ -192,16 +194,41 @@ def build_trainer(
         dataloader_num_workers=0,
         remove_unused_columns=False,
     )
+    # Version-drift guard: this pin spans transformers 4.33.2-4.57.x, and
+    # `evaluation_strategy` was REMOVED (not aliased) in >=4.46 in favour of
+    # `eval_strategy`. Resolve the keyword against the installed signature
+    # instead of guessing, so a version bump cannot kill a 12h run.
+    args_kwargs, dropped = supported_kwargs(Seq2SeqTrainingArguments, args_kwargs)
+    if dropped:
+        print(
+            f"WARNING: Seq2SeqTrainingArguments does not accept {dropped} in this "
+            "transformers build; dropped. Check the keyword names against "
+            "docs/HYPERPARAMETERS.md.",
+            file=sys.stderr,
+        )
+    args = Seq2SeqTrainingArguments(**args_kwargs)
     data_collator = IndicDataCollator(tokenizer, model=model)
-    return Seq2SeqTrainer(
-        model=model,
-        args=args,
-        train_dataset=train_ds,
-        eval_dataset=eval_ds,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        callbacks=[build_mirror_callback(cfg)],
+    # Same guard for the trainer: `tokenizer=` was removed in >=4.46 in favour
+    # of `processing_class=` (no alias, no **kwargs on __init__).
+    trainer_kwargs, trainer_dropped = supported_kwargs(
+        Seq2SeqTrainer,
+        {
+            "model": model,
+            "args": args,
+            "train_dataset": train_ds,
+            "eval_dataset": eval_ds,
+            "tokenizer": tokenizer,
+            "data_collator": data_collator,
+            "callbacks": [build_mirror_callback(cfg)],
+        },
     )
+    if trainer_dropped:
+        print(
+            f"WARNING: Seq2SeqTrainer does not accept {trainer_dropped} in this "
+            "transformers build; dropped.",
+            file=sys.stderr,
+        )
+    return Seq2SeqTrainer(**trainer_kwargs)
 
 
 def main(argv=None) -> None:

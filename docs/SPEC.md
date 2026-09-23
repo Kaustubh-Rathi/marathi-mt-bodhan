@@ -83,6 +83,17 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 - `plot_length_hist(rows, out_png)`
 - `plot_metric_bars(metrics: dict, out_png)`
 
+### mr_mt/compat.py
+- `supported_kwargs(target, kwargs, aliases=None) -> Tuple[dict, List[str]]` —
+  renames/filters kwargs against the *installed* signature of `target` (class or
+  callable) and returns `(kept, dropped)`. Callers log the dropped names loudly.
+- `ALIASES` maps renamed keywords: `evaluation_strategy -> eval_strategy`
+  (transformers >= 4.46), `tokenizer -> processing_class`, and
+  `generation_max_length -> generation_max_new_tokens` for forward compatibility.
+- Rationale: Session B's pin (`>=4.33.2,<5`) spans the rename point, where the old
+  names were **removed, not aliased**; Session A pins 5.13.1 where `warmup_ratio`
+  is deprecated in favour of `warmup_steps` (float in `[0, 1)` = ratio).
+
 ### mr_mt/checkpointing.py
 - `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote,
   rclone_binary, keep_local, max_pending)` — TrainerCallback. `on_save`:

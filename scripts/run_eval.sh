@@ -5,6 +5,7 @@
 # Example:
 #   bash scripts/run_eval.sh configs/base.yaml bodhan /kaggle/working/run/adapter
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 CONFIG="${1:-configs/base.yaml}"
 FAMILY="${2:-bodhan}"
