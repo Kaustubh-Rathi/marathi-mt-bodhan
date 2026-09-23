@@ -58,7 +58,9 @@ training:
     - tensorboard
   logging_dir: /kaggle/working/run/logs
   packing: false
-  assistant_only_loss: true
+  # bodhan-ai/indic-translate's chat template has no {% generation %} markers,
+  # so assistant-only masking is off; the trainer also auto-downgrades this.
+  assistant_only_loss: false
 
 data:
   train_file: data/processed/train.jsonl

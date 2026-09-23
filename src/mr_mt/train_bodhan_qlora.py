@@ -499,25 +499,25 @@ def main(argv=None):
     model, tokenizer, processor = load_model_and_tokenizer(cfg)
 
     # Preflight: assistant_only_loss requires {% generation %} markers in the
-    # chat template (TRL 1.6 enforces this at trainer init). Warn here with
-    # the config remedy so a template regression is diagnosed in seconds.
+    # chat template (TRL 1.6 enforces this at trainer init). Auto-downgrade to
+    # False when the template lacks them so the run does not die at init.
     if bool(cfg["training"].get("assistant_only_loss", False)):
         tmpl = getattr(tokenizer, "chat_template", None) or ""
         if "{% generation" not in tmpl:
             print(
-                "WARNING: training.assistant_only_loss is true but the chat "
-                "template has no {% generation %} markers; TRL 1.6 will raise "
-                "at trainer init. Remedy: set assistant_only_loss: false in "
-                "the session config (or add markers to the template).",
+                "WARNING: assistant_only_loss was true but the chat template "
+                "has no {% generation %} markers; setting it to false for this "
+                "run (train on the full sequence).",
                 file=sys.stderr,
             )
+            cfg["training"]["assistant_only_loss"] = False
 
-    # kBit training prep (skip on Unsloth-patched models).
+    # kBit training prep (skip on Unsloth-patched models). NOTE: recent PEFT
+    # dropped the `gradient_checkpointing` kwarg; enable GC separately below.
     try:
         from peft import prepare_model_for_kbit_training
 
-        grad_ckpt = bool(cfg["training"].get("gradient_checkpointing", True))
-        model = prepare_model_for_kbit_training(model, gradient_checkpointing=grad_ckpt)
+        model = prepare_model_for_kbit_training(model)
     except Exception as exc:  # noqa: BLE001 - e.g. Unsloth already prepared
         print(
             f"WARNING: prepare_model_for_kbit_training skipped ({exc}).",
