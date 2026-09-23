@@ -111,9 +111,13 @@ def load_bodhan_model(cfg: dict, adapter: str = ""):
 
     dtype = (
         torch.bfloat16
-        if str(model_cfg.get("bnb", {}).get("compute_dtype", "bfloat16"))
-        .lower()
-        .startswith("bf")
+        if (
+            str(model_cfg.get("bnb", {}).get("compute_dtype", "bfloat16"))
+            .lower()
+            .startswith("bf")
+            and torch.cuda.is_available()
+            and torch.cuda.is_bf16_supported()
+        )
         else torch.float16
     )
     quant_cfg = None
@@ -366,29 +370,39 @@ def translate_batch(
 
 
 def score(preds: List[str], refs: List[str], tgt_lang: str = "mar_Deva") -> dict:
-    """Score predictions with sacreBLEU BLEU and chrF++.
+    """Score predictions with sacreBLEU BLEU and chrF/chrF++.
 
-    Uses sacrebleu defaults (``tokenize`` default / ``13a`` for BLEU,
-    ``chrF2++`` with ``word_order=2`` for chrF++). Signatures are printed
-    for reproducibility. ``tgt_lang`` is accepted for API stability and
-    recorded in the returned dict.
+    Predictions and references are normalized identically (Indic normalizer for
+    ``tgt_lang`` when available, else NFKC + whitespace) and stripped so Unicode
+    variance does not under-score. BLEU uses sacreBLEU defaults with printed
+    signatures; chrF++ (``word_order=2``) is the primary metric for Marathi.
 
     Returns:
-        ``{"bleu": float, "chrf": float, "chrf++": float,
-        "bleu_signature": str, "chrf_signature": str, "tgt_lang": str}``.
+        ``{"bleu","chrf","chrf++","bleu_signature","chrf_signature","tgt_lang"}``.
     """
     import sacrebleu
 
+    try:
+        from mr_mt.data.decontaminate import normalize as _norm
+
+        preds = [_norm(p, tgt_lang).strip() for p in preds]
+        refs = [_norm(r, tgt_lang).strip() for r in refs]
+    except Exception:
+        preds = [str(p).strip() for p in preds]
+        refs = [str(r).strip() for r in refs]
+
     bleu = sacrebleu.corpus_bleu(preds, [refs])
-    chrf = sacrebleu.corpus_chrf(preds, [refs], word_order=2)
+    chrf = sacrebleu.corpus_chrf(preds, [refs], word_order=0)
+    chrfpp = sacrebleu.corpus_chrf(preds, [refs], word_order=2)
     print(f"[sacrebleu] BLEU signature: {bleu}")
-    print(f"[sacrebleu] chrF++ signature: {chrf}")
+    print(f"[sacrebleu] chrF signature: {chrf}")
+    print(f"[sacrebleu] chrF++ signature: {chrfpp}")
     return {
         "bleu": float(bleu.score),
         "chrf": float(chrf.score),
-        "chrf++": float(chrf.score),
+        "chrf++": float(chrfpp.score),
         "bleu_signature": str(bleu),
-        "chrf_signature": str(chrf),
+        "chrf_signature": str(chrfpp),
         "tgt_lang": tgt_lang,
     }
 
@@ -398,54 +412,8 @@ def score(preds: List[str], refs: List[str], tgt_lang: str = "mar_Deva") -> dict
 # ---------------------------------------------------------------------------
 
 
-try:
-    from mr_mt.data.download import _extract_pair
-except Exception:  # pragma: no cover - fallback when data package unavailable
-
-    def _extract_pair(example: dict, src_lang: str, tgt_lang: str) -> Tuple[str, str]:
-        """Fallback extract (src, ref) from a benchmark row.
-
-        Mirrors ``mr_mt.data.download._extract_pair``; the canonical
-        implementation lives there. Handles IN22-Gen ``default``-config rows
-        (``sentence_eng_Latn`` / ``sentence_mar_Deva``) and
-        ``facebook/flores`` pairing-config rows (same ``sentence_<lang>``
-        convention, or a ``translation`` mapping).
-        """
-        src_keys = [
-            f"sentence_{src_lang}",
-            src_lang,
-            "source_sentence",
-            "source_string",
-            "source",
-            "src",
-            "input",
-            "text",
-        ]
-        tgt_keys = [
-            f"sentence_{tgt_lang}",
-            tgt_lang,
-            "target_sentence",
-            "target_string",
-            "target",
-            "tgt",
-            "output",
-        ]
-        trans = example.get("translation")
-        if isinstance(trans, dict) and (src_lang in trans or tgt_lang in trans):
-            src = trans.get(src_lang, "")
-            tgt = trans.get(tgt_lang, "")
-            if src and tgt:
-                return str(src), str(tgt)
-        for key in src_keys:
-            if example.get(key):
-                src = str(example[key])
-                for tkey in tgt_keys:
-                    if example.get(tkey):
-                        return src, str(example[tkey])
-        raise KeyError(
-            f"Cannot extract src/ref for {src_lang}->{tgt_lang} from keys "
-            f"{sorted(example.keys())}"
-        )
+# Canonical extractor lives in data/download.py (single source of truth).
+from mr_mt.data.download import _extract_pair  # noqa: E402
 
 
 def _load_benchmark(
@@ -463,6 +431,9 @@ def _load_benchmark(
     srcs, refs = [], []
     for ex in ds:
         s, r = _extract_pair(dict(ex), bench["src_lang"], bench["tgt_lang"])
+        s, r = str(s).strip(), str(r).strip()
+        if not s or not r:
+            continue
         srcs.append(s)
         refs.append(r)
     return srcs, refs

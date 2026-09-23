@@ -1,7 +1,7 @@
-"""Session B fallback trainer: LoRA fine-tune IndicTrans2 for hin_Deva -> mar_Deva.
+"""Session B fallback trainer: LoRA fine-tune IndicTrans2 for eng_Latn -> mar_Deva.
 
 Uses the AI4Bharat IndicTrans2 ``huggingface_interface`` model
-(``ai4bharat/indictrans2-indic-indic-dist-320M``) together with the MANDATORY
+(``ai4bharat/indictrans2-en-indic-dist-200M``) together with the MANDATORY
 ``IndicTransToolkit`` preprocessing/collator utilities.
 
 Stability guards for the known random-segfault issue (upstream #117):
@@ -244,7 +244,7 @@ def build_trainer(
 def main(argv=None) -> None:
     """CLI: train the Session B IndicTrans2 LoRA adapter and log the run."""
     parser = argparse.ArgumentParser(
-        description="Session B fallback: LoRA fine-tune IndicTrans2 (hin_Deva->mar_Deva)."
+        description="Session B fallback: LoRA fine-tune IndicTrans2 (eng_Latn->mar_Deva)."
     )
     parser.add_argument(
         "--config", required=True, help="Path to the session YAML config."
@@ -284,11 +284,62 @@ def main(argv=None) -> None:
 
     processor, tokenizer, base_model = load_processor_and_model(cfg)
     model = get_peft_model(base_model, build_lora(cfg))
+
+    # 1. Trainable parameters guard: ensure LoRA is actually training params.
+    model.print_trainable_parameters()
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if total_params > 0:
+        trainable_pct = 100 * trainable_params / total_params
+        if trainable_pct < 0.1:
+            raise RuntimeError(
+                f"Trainable parameters ({trainable_pct:.2f}%) below 0.1% threshold — "
+                "LoRA config may be misconfigured (e.g., target_modules mismatch)."
+            )
+
+    # Load train/dev rows early for token-length stats.
+    train_rows = read_jsonl(cfg["data"]["train_file"])
+    dev_rows = read_jsonl(cfg["data"]["dev_file"])
+
     if bool(cfg["training"].get("gradient_checkpointing", False)):
         model.gradient_checkpointing_enable()
         model.config.use_cache = False
 
     max_len = int(cfg["training"].get("max_seq_length", 256))
+
+    # 2. Tokenized length stats on ~200 train rows before training.
+    sample_rows = train_rows[:200]
+    src_lengths = []
+    tgt_lengths = []
+    for row in sample_rows:
+        src_text = processor.preprocess_batch(
+            [row["src"]],
+            src_lang=row.get("src_lang") or cfg["data"]["source_lang"],
+            tgt_lang=row.get("tgt_lang") or cfg["data"]["target_lang"],
+        )[0]
+        src_tok = tokenizer(src_text, truncation=False, add_special_tokens=False)
+        tgt_tok = tokenizer(str(row["tgt"]), truncation=False, add_special_tokens=False)
+        src_lengths.append(len(src_tok["input_ids"]))
+        tgt_lengths.append(len(tgt_tok["input_ids"]))
+
+    def _pctile(vals, p):
+        if not vals:
+            return 0
+        vals_sorted = sorted(vals)
+        idx = int(len(vals_sorted) * p / 100)
+        return vals_sorted[min(idx, len(vals_sorted) - 1)]
+
+    for name, lengths in (("src", src_lengths), ("tgt", tgt_lengths)):
+        p50 = _pctile(lengths, 50)
+        p95 = _pctile(lengths, 95)
+        p99 = _pctile(lengths, 99)
+        mx = max(lengths) if lengths else 0
+        exceed = sum(1 for L in lengths if L > max_len)
+        frac = exceed / len(lengths) if lengths else 0.0
+        print(
+            f"[token-len] {name}: p50={p50} p95={p95} p99={p99} max={mx} "
+            f"exceeding_max_seq_len({max_len})={exceed}/{len(lengths)} ({frac:.1%})"
+        )
 
     def tokenize_batch(batch: dict) -> dict:
         """Batched Indic normalize + tokenize (one preprocess call per lang group).
@@ -373,7 +424,7 @@ def main(argv=None) -> None:
             "steps": cfg["training"].get("max_steps", 3000),
             "status": "done",
             "adapter_link": str(adapter_dir),
-            "notes": "Session B fallback IndicTrans2 LoRA hin_Deva->mar_Deva",
+            "notes": "Session B fallback IndicTrans2 LoRA eng_Latn->mar_Deva",
         }
     )
 

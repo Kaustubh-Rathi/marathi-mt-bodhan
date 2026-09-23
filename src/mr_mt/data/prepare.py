@@ -22,7 +22,12 @@ import random
 from pathlib import Path
 
 from mr_mt.config import load_session_config
-from mr_mt.data.decontaminate import dedup_against, near_dup_filter, pair_hash
+from mr_mt.data.decontaminate import (
+    dedup_against,
+    near_dup_filter,
+    normalize,
+    pair_hash,
+)
 from mr_mt.utils import read_jsonl, write_jsonl
 
 CANDIDATE_EXTS = {".tsv", ".txt", ".csv"}
@@ -161,8 +166,8 @@ def build_splits(cfg: dict) -> dict:
     """
     prepare = cfg.get("prepare", {})
     data_cfg = cfg.get("data", {})
-    raw_dir = Path(str(prepare.get("raw_dir", "data/raw/coild")))
-    src_lang = data_cfg.get("source_lang", "hin_Deva")
+    raw_dir = Path(str(prepare.get("raw_dir", "data/raw/samanantar")))
+    src_lang = data_cfg.get("source_lang", "eng_Latn")
     tgt_lang = data_cfg.get("target_lang", "mar_Deva")
     min_words = int(prepare.get("min_words", 1))
     max_words = int(prepare.get("max_words", 100))
@@ -229,13 +234,22 @@ def build_splits(cfg: dict) -> dict:
         )
     kept_unique = len(clean_rows)
 
-    # 3. Decontaminate against benchmarks (exact hashes + near-dup sample).
+    # 3. Decontaminate against ALL benchmark rows (exact hashes + near-dup on
+    #    both sides). Fail CLOSED if the benchmarks are missing so a vacuous
+    #    "0 leakage" can never be reported.
     bench_rows = _load_benchmark_rows()
-    blocklist = {pair_hash(r.get("src", ""), r.get("tgt", "")) for r in bench_rows}
-    deduped, removed_exact = dedup_against(clean_rows, blocklist)
-    sample_refs = bench_rows[:NEAR_DUP_REF_SAMPLE]
+    if not bench_rows:
+        raise FileNotFoundError(
+            "No benchmark rows loaded from data/raw/benchmarks/*.jsonl. "
+            "Run `python -m mr_mt.data.download --config <yaml>` first; "
+            "refusing to build splits with no decontamination blocklist."
+        )
+    blocklist = {
+        pair_hash(r.get("src", ""), r.get("tgt", ""), tgt_lang) for r in bench_rows
+    }
+    deduped, removed_exact = dedup_against(clean_rows, blocklist, tgt_lang)
     final_rows, removed_near = near_dup_filter(
-        deduped, sample_refs, threshold=near_dup_threshold
+        deduped, bench_rows, threshold=near_dup_threshold, lang=tgt_lang
     )
 
     # 4. Deterministic split.
@@ -244,6 +258,11 @@ def build_splits(cfg: dict) -> dict:
     train_rows = final_rows[:max_train]
     dev_rows = final_rows[max_train : max_train + max_dev]
     test_rows = final_rows[max_train + max_dev : max_train + max_dev + TEST_CAP]
+
+    # 4b. Dev/test must not duplicate a train source (exact normalized match).
+    train_src = {normalize(r["src"], tgt_lang) for r in train_rows}
+    dev_rows = [r for r in dev_rows if normalize(r["src"], tgt_lang) not in train_src]
+    test_rows = [r for r in test_rows if normalize(r["src"], tgt_lang) not in train_src]
 
     # 5. Attach language codes and write.
     def _with_langs(rows: list) -> list:
@@ -274,7 +293,7 @@ def build_splits(cfg: dict) -> dict:
     leakage_exact = sum(
         1
         for r in (train_out + dev_out + test_out)
-        if pair_hash(r["src"], r["tgt"]) in blocklist
+        if pair_hash(r["src"], r["tgt"], tgt_lang) in blocklist
     )
     counts = {
         "train": len(train_out),

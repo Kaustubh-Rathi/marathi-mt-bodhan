@@ -1,22 +1,17 @@
 """Download the raw training corpus and the held-out benchmark sets.
 
-Training data (primary):
-    ``coild-aikosh/Education_v2`` — gated COILD education corpus,
-    direction hin_Deva -> mar_Deva. Fetched with
-    :func:`huggingface_hub.snapshot_download`. The repo contains HIN-MAR
-    language-pair folders with ``source_reviewed`` tiers and TSV-like files;
-    we walk the snapshot and collect candidate files whose path contains
-    ``HIN-MAR`` (case-insensitive) with a ``.tsv`` / ``.txt`` / ``.csv``
-    extension.
+Training data (default, ungated):
+    ``ai4bharat/samanantar`` config ``mr`` (direction eng_Latn -> mar_Deva),
+    streamed with :func:`datasets.load_dataset` and reservoir-sampled to
+    ``samanantar_mr.jsonl`` (bounded ``max_train + max_dev + 2000`` rows).
 
-Training data (fallback, ungated):
-    ``ai4bharat/samanantar`` config ``mr``, streamed with
-    :func:`datasets.load_dataset` and materialized to
-    ``samanantar_mr.jsonl`` (first ``max_train + max_dev + 2000`` rows).
+Training data (alternative):
+    ``coild-aikosh/Education_v2`` — gated (manual approval) COILD education
+    corpus. Only used when ``prepare.dataset`` explicitly names COILD.
 
 Benchmarks:
-    ``ai4bharat/IN22-Gen`` (config ``hin_Deva-mar_Deva``, split ``gen``) and
-    ``facebook/flores`` (config ``hin_Deva-mar_Deva``, split ``devtest``),
+    ``ai4bharat/IN22-Gen`` (config ``null``/default, split ``test``) and
+    ``facebook/flores`` (config ``eng_Latn-mar_Deva``, split ``devtest``),
     each saved to ``data/raw/benchmarks/<name>.jsonl``.
 
 Python 3.11. Secrets come from :func:`mr_mt.secrets.get_hf_token` — never
@@ -133,19 +128,29 @@ def _extract_pair(example: dict, src_lang: str, tgt_lang: str) -> tuple:
 
 
 def _download_samanantar_fallback(cfg: dict, raw_dir: str) -> str:
-    """Stream ungated ``ai4bharat/samanantar`` (config ``mr``) to JSONL."""
+    """Stream ungated ``ai4bharat/samanantar`` (config ``mr``) to JSONL.
+
+    Uses bounded reservoir sampling over up to ``5 * limit`` valid stream rows
+    (instead of taking the head) so the materialized subset is not
+    domain-ordered. Bounded time + memory.
+    """
+    import random
+
     from datasets import load_dataset
 
     prepare = cfg.get("prepare", {})
     limit = (
         int(prepare.get("max_train", 8000)) + int(prepare.get("max_dev", 1000)) + 2000
     )
+    seed = int(prepare.get("seed", 42))
+    rng = random.Random(seed)
+    max_scan = limit * 5
     out_path = str(Path(raw_dir) / "samanantar_mr.jsonl")
     ds = load_dataset(FALLBACK_REPO_ID, FALLBACK_CONFIG, split="train", streaming=True)
-    rows: list = []
+
+    reservoir: list = []
+    scanned = 0
     for example in ds:
-        if len(rows) >= limit:
-            break
         try:
             # Samanantar 'mr' config is English->Marathi.
             src, tgt = _extract_pair(dict(example), "eng_Latn", "mar_Deva")
@@ -154,18 +159,28 @@ def _download_samanantar_fallback(cfg: dict, raw_dir: str) -> str:
         src, tgt = src.strip(), tgt.strip()
         if not src or not tgt or src == tgt:
             continue
-        rows.append(
-            {
-                "src": src,
-                "tgt": tgt,
-                "src_lang": "eng_Latn",
-                "tgt_lang": "mar_Deva",
-                "domain": "web",
-            }
-        )
-    write_jsonl(rows, out_path)
+        row = {
+            "src": src,
+            "tgt": tgt,
+            "src_lang": "eng_Latn",
+            "tgt_lang": "mar_Deva",
+            "domain": "web",
+        }
+        scanned += 1
+        if len(reservoir) < limit:
+            reservoir.append(row)
+        else:
+            j = rng.randint(0, scanned - 1)
+            if j < limit:
+                reservoir[j] = row
+        if scanned >= max_scan:
+            break
+
+    rng.shuffle(reservoir)
+    write_jsonl(reservoir, out_path)
     print(
-        f"streamed '{FALLBACK_REPO_ID}/{FALLBACK_CONFIG}' -> {out_path} ({len(rows)} rows)"
+        f"reservoir-sampled {len(reservoir)} rows (scanned {scanned}) from "
+        f"'{FALLBACK_REPO_ID}/{FALLBACK_CONFIG}' -> {out_path}"
     )
     return raw_dir
 
@@ -173,13 +188,13 @@ def _download_samanantar_fallback(cfg: dict, raw_dir: str) -> str:
 def download_dataset(cfg: dict) -> str:
     """Download the training corpus configured in ``cfg['prepare']``.
 
-    Uses the COILD snapshot for the default dataset and the ungated
-    Samanantar stream when ``prepare.dataset`` names ``samanantar``.
-    Returns the local raw directory.
+    Default and recommended: the ungated ``ai4bharat/samanantar`` (config
+    ``mr``, eng->mr) stream. The gated COILD snapshot is used only when
+    ``prepare.dataset`` explicitly names it. Returns the local raw directory.
     """
     prepare = cfg.get("prepare", {})
-    dataset_id = str(prepare.get("dataset", COILD_REPO_ID))
-    raw_dir = str(prepare.get("raw_dir", "data/raw/coild"))
+    dataset_id = str(prepare.get("dataset", FALLBACK_REPO_ID))
+    raw_dir = str(prepare.get("raw_dir", "data/raw/samanantar"))
     ensure_dir(raw_dir)
     if "samanantar" in dataset_id.lower():
         return _download_samanantar_fallback(cfg, raw_dir)
@@ -199,7 +214,7 @@ def download_benchmarks(cfg: dict) -> Dict[str, str]:
     ensure_dir(out_dir)
     token = get_hf_token(
         required=[
-            ("datasets", "coild-aikosh/Education_v2"),
+            ("datasets", "ai4bharat/samanantar"),
             ("datasets", "ai4bharat/IN22-Gen"),
             ("datasets", "facebook/flores"),
         ]
@@ -226,7 +241,7 @@ def download_benchmarks(cfg: dict) -> Dict[str, str]:
             example = dict(example)
             src, tgt = _extract_pair(example, src_lang, tgt_lang)
             src, tgt = src.strip(), tgt.strip()
-            if not src or not tgt:
+            if not src or not tgt or src == tgt:
                 continue
             rows.append(
                 {

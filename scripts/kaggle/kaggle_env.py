@@ -297,6 +297,8 @@ def activate(stack: str = "bodhan") -> Path:
     run later anyway, so stop before the pip install. ``MR_MT_TOKEN_PROBE=0``
     disables the probe and the abort; ``None`` (unknown) verdicts never abort.
     """
+    # Reduce CUDA fragmentation for 8B QLoRA; must be set before CUDA init.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     repo = _ensure_import_path()
     os.chdir(repo)
 

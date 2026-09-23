@@ -43,7 +43,7 @@ from mr_mt.secrets import get_hf_token
 
 
 # ---------------------------------------------------------------------------
-# Prompt construction
+# Prompt construction (shared via mr_mt.prompts.render_prompt)
 # ---------------------------------------------------------------------------
 
 
@@ -54,6 +54,9 @@ def _render_user_content(row: dict, cfg: dict) -> str:
     WITHOUT any ``apply_chat_template`` wrapping; TRL applies the chat
     template itself when training on conversational datasets.
 
+    Thin wrapper over :func:`mr_mt.prompts.render_prompt` (kept for
+    back-compat).
+
     Args:
         row: Dataset row with at least ``src`` (and optionally
             ``src_lang``/``tgt_lang``) keys.
@@ -62,62 +65,136 @@ def _render_user_content(row: dict, cfg: dict) -> str:
     Returns:
         The rendered user-turn string.
     """
-    data_cfg = cfg.get("data", {})
-    template = data_cfg.get("prompt_template", "{src}")
-    src = row.get("src", "")
-    tgt = row.get("tgt", "")
-    src_lang = row.get("src_lang", data_cfg.get("source_lang", ""))
-    tgt_lang = row.get("tgt_lang", data_cfg.get("target_lang", ""))
-    src_lang_name = data_cfg.get("source_lang_name", src_lang or "source")
-    tgt_lang_name = data_cfg.get("target_lang_name", tgt_lang or "target")
-    return template.format(
-        src=src,
-        tgt=tgt,
-        src_lang=src_lang,
-        tgt_lang=tgt_lang,
-        src_lang_name=src_lang_name,
-        tgt_lang_name=tgt_lang_name,
-    )
+    from mr_mt.prompts import render_prompt
+
+    return render_prompt(row, cfg)
 
 
-def build_prompt(sample: dict, cfg: dict, tokenizer=None) -> str:
-    """Build chat-template-ready training text for one ``{"src", "tgt"}`` row.
-
-    The user message is rendered from ``cfg["data"]["prompt_template"]``
-    and then wrapped with the model chat template via
-    ``tokenizer.apply_chat_template`` as a user/assistant pair.
-
-    Kept for reference/debugging; the trainer path uses conversational
-    ``{"messages": ...}`` datasets (see :func:`_load_chat_dataset`) and
-    lets TRL apply the chat template so ``assistant_only_loss`` can mask
-    the prompt tokens.
-
-    Args:
-        sample: Dataset row with at least ``src`` and ``tgt`` keys.
-        cfg: Merged config dict (see ``configs/base.yaml``).
-        tokenizer: Optional tokenizer/processor exposing
-            ``apply_chat_template``. When ``None`` (or when the tokenizer
-            has no chat template), the rendered user text is returned as-is.
-
-    Returns:
-        Full conversation text including the assistant (target) turn.
-    """
-    user_text = _render_user_content(sample, cfg)
-    tgt = sample.get("tgt", "")
-    if tokenizer is None:
-        return user_text
-    apply_chat = getattr(tokenizer, "apply_chat_template", None)
-    if apply_chat is None:
-        return user_text
-    messages = [
-        {"role": "user", "content": user_text},
-        {"role": "assistant", "content": tgt},
-    ]
+def _is_bf16_supported() -> bool:
+    """Return True when this GPU natively supports bf16 (else use fp16)."""
     try:
-        return apply_chat(messages, tokenize=False, add_generation_prompt=False)
+        return bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
     except Exception:
-        # Tokenizer without a usable chat template: fall back to plain text.
-        return user_text + "\n" + tgt
+        return False
+
+
+def ensure_training_chat_template(tokenizer) -> bool:
+    """Best-effort patch of ``tokenizer.chat_template`` for assistant masking.
+
+    TRL's ``assistant_only_loss`` needs ``{% generation %}`` markers in the
+    chat template. If the template already has them, return True. Otherwise
+    try to wrap the assistant turn for the common Gemma markers
+    (``<start_of_turn>model`` ... ``<end_of_turn>`` and ``<|turn>model`` ...
+    ``<turn|>``) by inserting ``{% generation %}`` after the model-turn
+    opener and ``{% endgeneration %}`` before the turn closer, then set
+    ``tokenizer.chat_template`` to the patched string and return True.
+    On any failure return False. Never raises.
+    """
+    try:
+        tmpl = getattr(tokenizer, "chat_template", None) or ""
+        if "{% generation" in tmpl:
+            return True
+        if not tmpl:
+            return False
+        for start, end in (
+            ("<start_of_turn>model", "<end_of_turn>"),
+            ("<|turn>model", "<turn|>"),
+        ):
+            if start in tmpl and end in tmpl:
+                patched = tmpl.replace(start, start + "{% generation %}").replace(
+                    end, "{% endgeneration %}" + end
+                )
+                if "{% generation" in patched:
+                    tokenizer.chat_template = patched
+                    print(
+                        "INFO: patched chat_template with {% generation %} "
+                        f"markers ({start!r}...{end!r})."
+                    )
+                    return True
+        return False
+    except Exception as exc:  # noqa: BLE001 - never crash training on template patch
+        print(
+            f"WARNING: ensure_training_chat_template failed ({exc}).",
+            file=sys.stderr,
+        )
+        return False
+
+
+def _length_percentiles(values: list) -> dict:
+    """Return p50/p95/p99/max for a list of ints (no numpy dependency)."""
+    if not values:
+        return {"p50": 0, "p95": 0, "p99": 0, "max": 0}
+    ordered = sorted(values)
+    n = len(ordered)
+
+    def _pct(p: float) -> float:
+        idx = min(n - 1, max(0, int(round((p / 100.0) * (n - 1)))))
+        return float(ordered[idx])
+
+    return {
+        "p50": _pct(50),
+        "p95": _pct(95),
+        "p99": _pct(99),
+        "max": float(ordered[-1]),
+    }
+
+
+def _log_truncation_stats(cfg: dict, tokenizer, n_rows: int = 200) -> None:
+    """Log tokenized length stats for prompt/target/combined on ~200 rows.
+
+    Never raises: any failure degrades to a warning so training proceeds.
+    """
+    try:
+        max_len = int(cfg.get("training", {}).get("max_seq_length", 1024))
+        train_file = cfg.get("data", {}).get("train_file", "")
+        rows = utils_mod.read_jsonl(train_file)[:n_rows]
+        if not rows:
+            print("INFO: truncation stats skipped (no train rows).")
+            return
+
+        def _tok_len(text: str) -> int:
+            try:
+                encode = getattr(tokenizer, "encode", None)
+                if callable(encode):
+                    encoded = encode(text, add_special_tokens=False)
+                    if isinstance(encoded, (list, tuple)):
+                        return len(encoded)
+                    n = getattr(encoded, "__len__", None)
+                    if callable(n):
+                        return int(n())
+            except Exception:
+                pass
+            try:
+                out = tokenizer(text, add_special_tokens=False)
+                ids = out.get("input_ids", []) if isinstance(out, dict) else []
+                if isinstance(ids, (list, tuple)):
+                    return len(ids)
+                size = getattr(ids, "__len__", None)
+                if callable(size):
+                    return int(size())
+            except Exception:
+                pass
+            return len(str(text).split())
+
+        prompt_lens, target_lens, combined_lens = [], [], []
+        for r in rows:
+            prompt = _render_user_content(r, cfg)
+            target = str(r.get("tgt", ""))
+            pl, tl = _tok_len(prompt), _tok_len(target)
+            prompt_lens.append(pl)
+            target_lens.append(tl)
+            combined_lens.append(pl + tl)
+        over = sum(1 for c in combined_lens if c > max_len)
+        frac = over / max(len(combined_lens), 1)
+        print(
+            f"INFO: tokenized length stats (n={len(rows)}, max_seq_length={max_len}): "
+            f"prompt={_length_percentiles(prompt_lens)} "
+            f"target={_length_percentiles(target_lens)} "
+            f"combined={_length_percentiles(combined_lens)} "
+            f"fraction_exceeding_max={frac:.3f} ({over}/{len(combined_lens)})"
+        )
+    except Exception as exc:  # noqa: BLE001 - stats must never block training
+        print(f"WARNING: truncation stats failed ({exc}).", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -166,12 +243,26 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
     token = get_hf_token(required=[("models", model_name)])
     trust_remote_code = bool(cfg["model"].get("trust_remote_code", True))
     bnb_cfg = cfg["model"].get("bnb", {})
-    quant_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type=bnb_cfg.get("quant_type", "nf4"),
-        bnb_4bit_use_double_quant=bool(bnb_cfg.get("double_quant", True)),
-        bnb_4bit_compute_dtype=_compute_dtype(bnb_cfg.get("compute_dtype", "bfloat16")),
+    # bf16 compute is only safe where the GPU supports it (A100+); T4/P100 must
+    # use fp16 or bitsandbytes will NaN/degrade.
+    bf16_ok = _is_bf16_supported()
+    compute_dtype = (
+        _compute_dtype("bfloat16" if bf16_ok else "float16")
+        if str(bnb_cfg.get("compute_dtype", "bfloat16"))
+        .lower()
+        .startswith(("bf", "bfloat"))
+        else _compute_dtype(bnb_cfg.get("compute_dtype", "bfloat16"))
     )
+    print(f"[dtype] bf16_supported={bf16_ok} -> bnb compute_dtype={compute_dtype}")
+    load_in_4bit = bool(cfg["model"].get("load_in_4bit", True))
+    quant_config = None
+    if load_in_4bit:
+        quant_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type=bnb_cfg.get("quant_type", "nf4"),
+            bnb_4bit_use_double_quant=bool(bnb_cfg.get("double_quant", True)),
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
 
     # Processor and tokenizer (gated repo: pass token=, never hardcode).
     processor = AutoProcessor.from_pretrained(
@@ -188,6 +279,11 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
             raise
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
+
+    # Make the chat template training-compatible ({% generation %} markers) so
+    # assistant-only masking can be used; otherwise the trainer downgrades it.
+    patched = ensure_training_chat_template(tokenizer)
+    print(f"[chat_template] generation-markers patched={patched}")
 
     # Attention-kernel fallback chain: try sdpa, then eager.
     model = None
@@ -265,18 +361,17 @@ def build_lora(cfg: dict):
 # ---------------------------------------------------------------------------
 
 
-def _load_chat_dataset(cfg: dict, split: str = "train"):
+def _load_chat_dataset(cfg: dict, split: str = "train", tokenizer=None):
     """Read a JSONL split into a conversational ``{"messages": ...}`` dataset.
 
     Each row becomes ``[{"role": "user", "content": ...},
     {"role": "assistant", "content": row["tgt"]}]``. TRL applies the
     model's chat template itself and, with ``assistant_only_loss=True``,
-    masks the prompt tokens. This requires ``{% generation %}`` markers
-    in the model's chat template — this exact stack is known to work
-    with ``bodhan-ai/indic-translate``. If trainer init raises about
-    missing generation markers, switch this dataset to prompt/completion
-    form (``{"prompt": [...], "completion": [...]}``) or set
-    ``assistant_only_loss: false`` in ``configs/base.yaml``.
+    masks the prompt tokens (requires ``{% generation %}`` markers; see
+    :func:`ensure_training_chat_template`).
+
+    If the rendered template does not end with the tokenizer EOS, the EOS is
+    appended to the assistant content so the model learns to stop.
     """
     from datasets import Dataset
 
@@ -292,6 +387,20 @@ def _load_chat_dataset(cfg: dict, split: str = "train"):
         }
         for r in rows
     ]
+
+    eos = getattr(tokenizer, "eos_token", None) if tokenizer is not None else None
+    if eos and conversations:
+        apply_chat = getattr(tokenizer, "apply_chat_template", None)
+        if callable(apply_chat):
+            try:
+                rendered = apply_chat(conversations[0]["messages"], tokenize=False)
+                if not str(rendered).endswith(eos):
+                    for conv in conversations:
+                        msg = conv["messages"][-1]
+                        msg["content"] = f"{msg['content']}{eos}"
+                    print("[data] appended EOS to assistant targets")
+            except Exception as exc:  # noqa: BLE001
+                print(f"WARNING: EOS check failed ({exc}).", file=sys.stderr)
     return Dataset.from_list(conversations)
 
 
@@ -335,12 +444,12 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None, processor=Non
     output_dir = run.get("output_dir", "/kaggle/working/run")
 
     if train_dataset is None:
-        train_dataset = _load_chat_dataset(cfg, split="train")
+        train_dataset = _load_chat_dataset(cfg, split="train", tokenizer=tokenizer)
 
     eval_dataset = None
     eval_strategy = "no"
     try:
-        eval_dataset = _load_chat_dataset(cfg, split="dev")
+        eval_dataset = _load_chat_dataset(cfg, split="dev", tokenizer=tokenizer)
         if len(eval_dataset) > 0:
             eval_strategy = "steps"
         else:
@@ -498,6 +607,17 @@ def main(argv=None):
 
     model, tokenizer, processor = load_model_and_tokenizer(cfg)
 
+    # GPU dtype: T4/P100 have no native bf16 -> use fp16 to avoid NaN/degraded
+    # QLoRA updates. A100+ keeps bf16.
+    if _is_bf16_supported():
+        cfg["training"]["bf16"] = bool(cfg["training"].get("bf16", True))
+        cfg["training"]["fp16"] = bool(cfg["training"].get("fp16", False))
+    else:
+        if cfg["training"].get("bf16"):
+            print("[dtype] bf16 unsupported on this GPU -> switching to fp16")
+        cfg["training"]["bf16"] = False
+        cfg["training"]["fp16"] = True
+
     # Preflight: assistant_only_loss requires {% generation %} markers in the
     # chat template (TRL 1.6 enforces this at trainer init). Auto-downgrade to
     # False when the template lacks them so the run does not die at init.
@@ -536,6 +656,10 @@ def main(argv=None):
             )
 
     trainer = build_trainer(cfg, model, tokenizer, processor=processor)
+    try:
+        trainer.model.print_trainable_parameters()
+    except Exception:  # noqa: BLE001 - diagnostics only
+        pass
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
     # Save adapter + tokenizer/processor under <output_dir>/adapter.

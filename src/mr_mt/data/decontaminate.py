@@ -44,18 +44,18 @@ def normalize(text: str, lang: str = "") -> str:
     return " ".join(text.split())
 
 
-def pair_hash(src: str, tgt: str) -> str:
+def pair_hash(src: str, tgt: str, lang: str = "") -> str:
     """Return the sha256 hex digest of ``normalized(src) + "\\x1f" + normalized(tgt)``.
 
-    Both sides are normalized so that whitespace-only variants of the same
-    pair map to the same hash. ``"\\x1f"`` (unit separator) keeps the
-    boundary between source and target unambiguous.
+    Both sides are normalized with ``lang`` (e.g. ``"mar_Deva"``) so that
+    Unicode/Indic variants of the same pair map to the same hash. ``"\\x1f"``
+    (unit separator) keeps the boundary between source and target unambiguous.
     """
-    joined = normalize(src) + "\x1f" + normalize(tgt)
+    joined = normalize(src, lang) + "\x1f" + normalize(tgt, lang)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
-def dedup_against(rows: list, blocklist_hashes) -> tuple:
+def dedup_against(rows: list, blocklist_hashes, lang: str = "") -> tuple:
     """Drop rows whose :func:`pair_hash` is in ``blocklist_hashes``.
 
     Returns ``(kept_rows, removed_count)``. Order of kept rows is preserved.
@@ -64,7 +64,7 @@ def dedup_against(rows: list, blocklist_hashes) -> tuple:
     kept: list = []
     removed = 0
     for row in rows:
-        if pair_hash(row.get("src", ""), row.get("tgt", "")) in block:
+        if pair_hash(row.get("src", ""), row.get("tgt", ""), lang) in block:
             removed += 1
         else:
             kept.append(row)
@@ -78,39 +78,57 @@ def _ref_text(ref: Ref) -> str:
     return str(ref)
 
 
-def near_dup_filter(rows: list, refs: list, threshold: float = 0.9) -> tuple:
-    """Drop rows whose normalized ``src`` is near-identical to any ref.
+def _ref_tgt(ref: Ref) -> str:
+    """Extract the target string from a reference (dict with ``tgt`` or "")."""
+    if isinstance(ref, dict):
+        return str(ref.get("tgt", ""))
+    return ""
+
+
+def _near_dup(text: str, ref_texts: list, threshold: float) -> bool:
+    """True if ``text`` is near-identical to any normalized ref text."""
+    text_len = len(text)
+    for ref_text in ref_texts:
+        ref_len = len(ref_text)
+        denom = text_len + ref_len
+        if denom == 0:
+            continue
+        # Upper bound of SequenceMatcher.ratio(); skip if unreachable.
+        if (2 * min(text_len, ref_len) / denom) < threshold:
+            continue
+        if difflib.SequenceMatcher(None, text, ref_text).ratio() >= threshold:
+            return True
+    return False
+
+
+def near_dup_filter(
+    rows: list, refs: list, threshold: float = 0.9, lang: str = ""
+) -> tuple:
+    """Drop rows near-identical to any ref on the SOURCE or TARGET side.
 
     Similarity is :class:`difflib.SequenceMatcher` ``ratio()`` on normalized
-    source strings. A cheap length-based upper bound
-    (``2 * min_len / (len_a + len_b)``) skips the expensive comparison
-    whenever a match at ``threshold`` is impossible, keeping this fast even
-    with hundreds of refs.
+    text (normalized with ``lang``). A cheap length-based upper bound skips the
+    expensive comparison whenever a match at ``threshold`` is impossible.
 
     Returns ``(kept_rows, removed_count)``. Order of kept rows is preserved.
     """
-    norm_refs: list = []
+    src_refs: list = []
+    tgt_refs: list = []
     for ref in refs:
-        text = normalize(_ref_text(ref))
-        if text:
-            norm_refs.append(text)
+        s = normalize(_ref_text(ref), lang)
+        t = normalize(_ref_tgt(ref), lang)
+        if s:
+            src_refs.append(s)
+        if t:
+            tgt_refs.append(t)
     kept: list = []
     removed = 0
     for row in rows:
-        cand = normalize(str(row.get("src", "")))
-        cand_len = len(cand)
-        dropped = False
-        for ref_text in norm_refs:
-            ref_len = len(ref_text)
-            denom = cand_len + ref_len
-            if denom == 0:
-                continue
-            # Upper bound of SequenceMatcher.ratio(); skip if unreachable.
-            if (2 * min(cand_len, ref_len) / denom) < threshold:
-                continue
-            if difflib.SequenceMatcher(None, cand, ref_text).ratio() >= threshold:
-                dropped = True
-                break
+        cand_src = normalize(str(row.get("src", "")), lang)
+        cand_tgt = normalize(str(row.get("tgt", "")), lang)
+        dropped = _near_dup(cand_src, src_refs, threshold) or _near_dup(
+            cand_tgt, tgt_refs, threshold
+        )
         if dropped:
             removed += 1
         else:

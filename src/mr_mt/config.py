@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -22,12 +21,6 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             out[key] = value
     return out
-
-
-def resolve(base_cfg: dict, overrides: Optional[dict] = None) -> dict:
-    if not overrides:
-        return dict(base_cfg)
-    return _deep_merge(base_cfg, overrides)
 
 
 def load_base_and_session(base_path, session_path) -> dict:

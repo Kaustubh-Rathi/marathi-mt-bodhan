@@ -35,4 +35,5 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds $IntervalSec
 }
 Remove-Item Env:\KAGGLE_API_TOKEN -ErrorAction SilentlyContinue
-Write-Host "done. parse logs: python parse_logs.py `"$logFile`""
+Write-Host "done. logs saved to: $logFile"
+Write-Host "view tail: powershell -ExecutionPolicy Bypass -File scripts/kaggle/show_logs.ps1 -Task $Task -Acct $Acct"

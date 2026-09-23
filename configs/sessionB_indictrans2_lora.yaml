@@ -24,6 +24,8 @@ lora:
   target_modules:
     - q_proj
     - k_proj
+    - v_proj
+    - o_proj
 
 training:
   max_seq_length: 256
@@ -31,11 +33,12 @@ training:
   gradient_accumulation_steps: 16
   learning_rate: 2.0e-4
   lr_scheduler_type: inverse_sqrt
-  warmup_steps: 1000
+  lr_scheduler_kwargs: {}  # override base cosine-only min_lr_rate (meaningless for inverse_sqrt)
+  warmup_steps: 150
   warmup_ratio: 0
-  max_steps: 3000
-  save_steps: 500
-  eval_steps: 500
+  max_steps: 350
+  save_steps: 50
+  eval_steps: 50
   logging_steps: 10
   logging_dir: /kaggle/working/sessionB/logs
   fp16: true
@@ -51,6 +54,9 @@ training:
   # Loss-only eval during training; beam-5 generation every 500 steps over the
   # dev set is a 20-50 min sink. Generation metrics come from mr_mt.evaluate.
   predict_with_generate: false
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
 
 checkpointing:
   mirror_dir: /kaggle/working/sessionB/checkpoint_mirror
