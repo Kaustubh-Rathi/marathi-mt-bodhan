@@ -320,16 +320,10 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
             raise unittest.SkipTest("kaggle_env could not be imported")
 
     def test_stacks_pin_peft(self) -> None:
-        """Regression: unpinned peft pulls a build that hard-raises on the
-        T4 image's torchao 0.10.0 (``is_torchao_available`` demands >0.16.0)
-        inside ``get_peft_model`` — this killed Session B's first run."""
-        for stack in ("bodhan", "indictrans2"):
+        """Regression: each stack pins a PEFT build supported by its image."""
+        for stack, pin in (("bodhan", "peft==0.20.0"), ("indictrans2", "peft==0.17.1")):
             with self.subTest(stack=stack):
-                self.assertIn(
-                    "peft==0.20.0",
-                    kaggle_env.STACK_PINS[stack],
-                    f"{stack} must pin peft==0.20.0 (torchao-compatible)",
-                )
+                self.assertIn(pin, kaggle_env.STACK_PINS[stack])
 
     def test_required_gated_stacks(self) -> None:
         common = [

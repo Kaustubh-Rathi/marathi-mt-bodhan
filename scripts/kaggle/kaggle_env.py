@@ -53,11 +53,9 @@ STACK_PINS = {
     "indictrans2": [
         "transformers>=4.33.2,<5",
         "IndicTransToolkit==1.1.1",
-        # Pinned like the bodhan stack: unpinned peft pulls a release whose
-        # torchao dispatcher hard-raises on the T4 image's torchao 0.10.0
-        # ("only versions above 0.16.0 are supported") at get_peft_model.
-        # 0.20.0 has no such path - proven by sessions A/C on this image.
-        "peft==0.20.0",
+        # The Kaggle image ships torchao 0.10.0. PEFT 0.20 rejects it during
+        # mapping; 0.17.1 supports the image and still supports LoRA APIs used here.
+        "peft==0.17.1",
         "datasets",
         "accelerate",
         "sentencepiece",
