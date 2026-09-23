@@ -245,7 +245,10 @@ class ProbeSemanticsTest(unittest.TestCase):
             self.assertIs(secrets.hf_token_can_access("t", "datasets", "x/y"), True)
         self.assertEqual(probe.call_count, 1)
 
-    def test_401_and_403_return_false_on_first_attempt(self) -> None:
+    def test_401_and_403_return_false_only_after_all_files(self) -> None:
+        # A missing file inside a gated repo also returns 403, so a single
+        # 401/403 is not definitive: every candidate must be tried before
+        # reporting blocked.
         for code in (401, 403):
             with self.subTest(code=code):
                 with mock.patch(
@@ -253,7 +256,15 @@ class ProbeSemanticsTest(unittest.TestCase):
                 ) as probe:
                     result = secrets.hf_token_can_access("t", "datasets", "x/y")
                 self.assertIs(result, False)
-                self.assertEqual(probe.call_count, 1, "401/403 is definitive")
+                self.assertEqual(probe.call_count, len(secrets._PROBE_FILES))
+
+    def test_403_then_readable_file_is_accessible(self) -> None:
+        # The coild regression: config.json (absent) -> 403, README.md -> 200.
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=[_http_error(403), _Resp(200)]
+        ) as probe:
+            self.assertIs(secrets.hf_token_can_access("t", "datasets", "x/y"), True)
+        self.assertEqual(probe.call_count, 2)
 
     def test_404_falls_through_to_next_filename(self) -> None:
         with mock.patch(

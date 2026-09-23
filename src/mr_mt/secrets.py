@@ -169,7 +169,7 @@ def iter_hf_tokens() -> Iterator[Tuple[str, str]]:
 
 # Filenames that exist in essentially every HF repo; the probe tries them in
 # order so a 404 on one (repo layout differs) does not mask a real 401/403.
-_PROBE_FILES = (".gitattributes", "config.json", "README.md")
+_PROBE_FILES = ("README.md", "config.json", ".gitattributes")
 
 
 def hf_token_can_access(
@@ -177,11 +177,14 @@ def hf_token_can_access(
 ) -> Optional[bool]:
     """Probe a gated repo: ``True`` if readable, ``False`` on 401/403.
 
-    Tries a few well-known filenames: a 401/403 is definitive (gated access is
-    checked before file existence), while 404/network errors move on and end as
-    ``None`` (undecidable) — callers must not treat ``None`` as failure, or an
-    offline box would reject every candidate.
+    Tries a few well-known filenames. IMPORTANT: HuggingFace returns 403 for a
+    *missing* file inside a gated repo even when the token is authorised, so a
+    single 401/403 is NOT proof of no access. We therefore try every candidate
+    and let an HTTP 2xx win; only when no file succeeds AND at least one
+    returned 401/403 do we report ``False`` (blocked). Otherwise ``None``
+    (undecidable) — callers must not treat ``None`` as failure.
     """
+    saw_denied = False
     for filename in _PROBE_FILES:
         url = f"https://huggingface.co/{repo_type}/{repo_id}/resolve/main/{filename}"
         req = urllib.request.Request(  # noqa: S310 - fixed HTTPS host
@@ -193,11 +196,11 @@ def hf_token_can_access(
                     return True
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
-                return False
+                saw_denied = True
             continue
         except Exception:
             continue
-    return None
+    return False if saw_denied else None
 
 
 def select_hf_token(
