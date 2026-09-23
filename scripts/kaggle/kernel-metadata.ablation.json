@@ -1,5 +1,5 @@
 {
-  "id": "acajjhfh/marathi-mt-ablation-train",
+  "id": "acajjhfh/marathi-mt-bodhan-qlora-ablation",
   "title": "Marathi MT - Bodhan QLoRA ablation",
   "code_file": "kernel_train_ablation.py",
   "language": "python",

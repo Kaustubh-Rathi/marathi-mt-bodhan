@@ -23,6 +23,7 @@ Account → task mapping (each account runs its own kernel):
 | prepare_data | `acajjhfh/marathi-mt-prepare-data` | `acajjhfh/hf-token`, `acajjhfh/gdrive-creds` |
 | train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-qlora-train` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` |
 | train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-lora-train` | `dreamexcellence/hf-token`, `dreamexcellence/gdrive-creds` |
+| train_ablation | `acajjhfh/marathi-mt-bodhan-qlora-ablation` | `acajjhfh/hf-token`, `acajjhfh/gdrive-creds` |
 | evaluate | `kaustubhcrathi/marathi-mt-evaluate-adapter` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` (adapter auto-fetch) |
 | probe | `kaustubhcrathi/marathi-mt-token-probe` | `kaustubhcrathi/hf-token` |
 | probe2 | `dreamexcellence/marathi-mt-token-probe-acct2` | `dreamexcellence/hf-token` |
@@ -96,6 +97,7 @@ auto-run download+prepare when `data/processed` is missing, the separate
 | ---- | -------- | ------- |
 | `kernel_prepare_data.py` | `kernel-metadata.prepare.json` | download corpus + benchmarks, build splits |
 | `kernel_train_bodhan.py` | `kernel-metadata.bodhan.json` | Bodhan Gemma-4 QLoRA (primary) |
+| `kernel_train_ablation.py` | `kernel-metadata.ablation.json` | Bodhan QLoRA ablation (Session C, parallel) |
 | `kernel_train_indictrans2.py` | `kernel-metadata.indictrans2.json` | IndicTrans2 LoRA (fallback) |
 | `kernel_evaluate.py` | `kernel-metadata.eval.json` | score an adapter on IN22-Gen + FLORES |
 
