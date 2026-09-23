@@ -186,7 +186,12 @@ def hf_token_can_access(
     """
     saw_denied = False
     for filename in _PROBE_FILES:
-        url = f"https://huggingface.co/{repo_type}/{repo_id}/resolve/main/{filename}"
+        # HF resolve URLs: models are UNPREFIXED (huggingface.co/{repo_id}/...),
+        # only datasets/spaces carry a type prefix. Emitting "/models/" always
+        # 404s (HTML), which masked every model verdict as "unknown" and left
+        # the fail-fast blind to real model-repo 401/403s.
+        prefix = "" if repo_type == "models" else f"{repo_type}/"
+        url = f"https://huggingface.co/{prefix}{repo_id}/resolve/main/{filename}"
         status = _probe_status(url, token, "HEAD", timeout)
         if status is None:
             # Some CDNs/egress paths mishandle HEAD; retry a 1-byte GET.

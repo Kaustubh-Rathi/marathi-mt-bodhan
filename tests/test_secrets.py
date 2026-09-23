@@ -245,6 +245,23 @@ class ProbeSemanticsTest(unittest.TestCase):
             self.assertIs(secrets.hf_token_can_access("t", "datasets", "x/y"), True)
         self.assertEqual(probe.call_count, 1)
 
+    def test_probe_urls_use_hf_canonical_prefixes(self) -> None:
+        """Model resolve URLs are UNPREFIXED; a '/models/' segment always
+        404s (HTML), which masked every model verdict as ``None``/unknown."""
+        for repo_type, expect_host_path, forbid in (
+            ("models", "https://huggingface.co/x/y/resolve/", "/models/"),
+            ("datasets", "https://huggingface.co/datasets/x/y/resolve/", None),
+        ):
+            with self.subTest(repo_type=repo_type):
+                with mock.patch(
+                    "urllib.request.urlopen", return_value=_Resp(200)
+                ) as probe:
+                    secrets.hf_token_can_access("t", repo_type, "x/y")
+                url = probe.call_args[0][0].full_url
+                self.assertTrue(url.startswith(expect_host_path), url)
+                if forbid:
+                    self.assertNotIn(forbid, url)
+
     def test_401_and_403_return_false_only_after_all_files(self) -> None:
         # A missing file inside a gated repo also returns 403, so a single
         # 401/403 is not definitive: every candidate must be tried before
@@ -301,6 +318,18 @@ class KaggleEnvPreFlightTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         if kaggle_env is None:  # pragma: no cover - defensive
             raise unittest.SkipTest("kaggle_env could not be imported")
+
+    def test_stacks_pin_peft(self) -> None:
+        """Regression: unpinned peft pulls a build that hard-raises on the
+        T4 image's torchao 0.10.0 (``is_torchao_available`` demands >0.16.0)
+        inside ``get_peft_model`` — this killed Session B's first run."""
+        for stack in ("bodhan", "indictrans2"):
+            with self.subTest(stack=stack):
+                self.assertIn(
+                    "peft==0.20.0",
+                    kaggle_env.STACK_PINS[stack],
+                    f"{stack} must pin peft==0.20.0 (torchao-compatible)",
+                )
 
     def test_required_gated_stacks(self) -> None:
         common = [
