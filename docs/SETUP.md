@@ -72,6 +72,26 @@ Enable GPU and Internet in `kernel-metadata.*.json` (`enable_gpu`, `enable_inter
 run — that is why every checkpoint is mirrored to Drive (`mr_mt.checkpointing`;
 Hub push is an optional second channel). See [TRAINING.md](TRAINING.md).
 
+**Pre-flight check (10 s — catches the #1 launch failure).** Verify the token can
+actually read the gated repos a session needs before pushing a 12h kernel:
+
+```bash
+python scripts/kaggle/kaggle_env.py --check-access bodhan        # or indictrans2
+```
+
+Exit 0 = all probes OK. `BLOCKED` = a definite 401/403, i.e. either the token is
+invalid/expired (check <https://huggingface.co/settings/tokens> — `whoami` must
+succeed) or the account was never granted access (open the repo page and accept
+the licence; **`coild-aikosh/Education_v2` is a MANUAL gate** that needs the
+owner's approval, so it can take hours). `unknown` is inconclusive, not a
+failure. Kernels run the same probe at startup — before the pip install — and
+print an `ACTION REQUIRED` block naming the repos that failed.
+
+**Rotating the token** means updating `HF_TOKEN` in *both* the local `.env` and
+the private `hf-token` Dataset (or the `HF_TOKEN` Kaggle Secret) for **every**
+account: a stale Kaggle Secret outranks the Dataset, though the startup probe now
+skips a token that fails its gated-repo checks.
+
 ## 3. Dependencies — TWO environments (do not mix)
 
 **Session A / C (Bodhan Gemma-4 QLoRA)** — pinned to the Arushhh-proven stack.

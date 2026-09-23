@@ -19,6 +19,10 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 ### mr_mt/secrets.py
 - `get_hf_token() -> Optional[str]`  # env -> Kaggle Secret -> hf-token Dataset -> .env
 - `get_env_secret(name) -> Optional[str]`  # env -> .env, for non-HF knobs (e.g. BODHAN_API_KEY)
+- `iter_hf_tokens() -> Iterator[Tuple[str, str]]`  # (source label, token) candidates, deduped
+- `hf_token_can_access(token, repo_type, repo_id) -> Optional[bool]`  # True/False(401|403)/None(undecidable)
+- `select_hf_token(required=(), timeout=20) -> Tuple[Optional[str], str]`  # first candidate that
+  can read every `(repo_type, repo_id)` in `required`; falls back to the first with a warning
 
 ### mr_mt/utils.py
 - `set_seed(seed: int) -> None`
@@ -112,6 +116,11 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
   `scripts/kaggle` to path, chdir, export HF token, optional pip install
   (`MR_MT_INSTALL=1`) and rclone config.
 - `kaggle_env.get_setting(name, default="")` — env var, then Kaggle Secret.
+- `kaggle_env.verify_hf_access(stack) -> {"token","source","results"}` — probes the
+  stack's gated repos and returns per-repo `True`/`False`(401|403)/`None`; `activate()`
+  runs it *before* the pip install and prints an `ACTION REQUIRED` block on failure.
+- `python scripts/kaggle/kaggle_env.py --check-access <stack>` — the same probe as a
+  local pre-flight CLI (exit 1 when a repo is definitively blocked).
 - `kaggle_env.latest_confirmed_checkpoint(remote) -> Optional[str]` — highest
   `checkpoint-<N>` under a Drive remote that has the `_upload_complete` marker.
 - `kaggle_env.rclone_fetch(remote_dir, local_dir, includes=None) -> bool`.

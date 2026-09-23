@@ -1,5 +1,5 @@
 {
-  "id": "kaustubhcrathi/marathi-mt-evaluate",
+  "id": "kaustubhcrathi/marathi-mt-evaluate-adapter",
   "title": "Marathi MT - evaluate adapter",
   "code_file": "kernel_evaluate.py",
   "language": "python",

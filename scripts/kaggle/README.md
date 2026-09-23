@@ -18,12 +18,32 @@ optional rclone), then calls the corresponding `mr_mt` module.
 
 Account → task mapping (each account runs its own kernel):
 
-| Task | `kernel-metadata.*.json` id | Datasets attached |
+| Task | `kernel-metadata.*.json` id (== real slug) | Datasets attached |
 | ---- | --------------------------- | ----------------- |
 | prepare_data | `acajjhfh/marathi-mt-prepare-data` | `acajjhfh/hf-token`, `acajjhfh/gdrive-creds` |
-| train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-train` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` |
-| train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-train` | `dreamexcellence/hf-token`, `dreamexcellence/gdrive-creds` |
-| evaluate | `kaustubhcrathi/marathi-mt-evaluate` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` (adapter auto-fetch) |
+| train_bodhan | `kaustubhcrathi/marathi-mt-bodhan-qlora-train` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` |
+| train_indictrans2 | `dreamexcellence/marathi-mt-indictrans2-lora-train` | `dreamexcellence/hf-token`, `dreamexcellence/gdrive-creds` |
+| evaluate | `kaustubhcrathi/marathi-mt-evaluate-adapter` | `kaustubhcrathi/hf-token`, `kaustubhcrathi/gdrive-creds` (adapter auto-fetch) |
+
+> Kaggle derives a kernel's slug from its **title**, not from the metadata `id`.
+> The ids above are the real (title-derived) slugs, so `kernels status/output <id>`
+> works; `push_kernel.ps1` also resolves the slug from the push output and prints
+> it if it ever differs.
+
+## Pre-flight (before every launch)
+
+The kernels probe the gated repos at startup and print an `ACTION REQUIRED` block
+if the token cannot read them; run the same check locally first:
+
+```powershell
+python scripts/kaggle/kaggle_env.py --check-access bodhan      # acct1/acct2 primary
+python scripts/kaggle/kaggle_env.py --check-access indictrans2 # acct2 fallback
+```
+
+`BLOCKED` (exit 1) means an invalid/expired token or a licence that was never
+accepted for the account owning the token (accept on the repo page;
+`coild-aikosh/Education_v2` is a manual gate). Fix the token in `.env` **and** in
+the `hf-token` Dataset/Secret of every account, then re-launch.
 
 ## Launch
 
@@ -70,6 +90,7 @@ auto-run download+prepare when `data/processed` is missing, the separate
 | `MR_MT_RESUME` | `""` | `auto` → restore latest confirmed Drive checkpoint and resume (train kernels) |
 | `MR_MT_ADAPTER` | `""` | adapter path/id for `kernel_evaluate.py`; empty → auto-fetch latest confirmed checkpoint from Drive |
 | `MR_MT_FAMILY` | `bodhan` | `bodhan` or `indictrans2` for `kernel_evaluate.py` |
+| `MR_MT_TOKEN_PROBE` | `1` | `0` → skip the startup gated-repo probe of the HF token |
 
 Kaggle script kernels cannot receive custom env vars from kernel-metadata.json,
 so these are read via `kaggle_env.get_setting()`: **environment first, then a

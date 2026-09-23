@@ -1,5 +1,5 @@
 {
-  "id": "kaustubhcrathi/marathi-mt-bodhan-train",
+  "id": "kaustubhcrathi/marathi-mt-bodhan-qlora-train",
   "title": "Marathi MT - Bodhan QLoRA train",
   "code_file": "kernel_train_bodhan.py",
   "language": "python",

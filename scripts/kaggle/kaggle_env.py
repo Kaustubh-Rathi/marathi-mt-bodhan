@@ -195,20 +195,99 @@ def _configure_rclone() -> None:
         _ensure_rclone()
 
 
-def activate(stack: str = "bodhan") -> Path:
-    """Set up paths, token, optional deps and rclone; return the repo dir."""
+def _required_gated(stack: str) -> list:
+    """Gated repos this stack must be able to read (probed at ``activate``).
+
+    A stale Kaggle Secret outranks the private ``hf-token`` Dataset, so the
+    token is chosen by actually probing these; a 401 here is what killed the
+    first Session A run.
+    """
+    common = [("datasets", "coild-aikosh/Education_v2")]
+    extra = {
+        "bodhan": [("models", "bodhan-ai/indic-translate")],
+        "indictrans2": [("models", "ai4bharat/indictrans2-indic-indic-dist-320M")],
+    }.get(stack, [])
+    return common + extra
+
+
+def _ensure_import_path() -> Path:
+    """Put ``<repo>/src`` (and this directory) on ``sys.path``; return the repo.
+
+    Needed by every entry point that imports ``mr_mt`` *before* ``activate``
+    (e.g. the ``--check-access`` pre-flight CLI run straight from the repo).
+    """
     repo = _find_repo()
     for sub in ("src", "scripts/kaggle"):
         p = str(repo / sub)
         if p not in sys.path:
             sys.path.insert(0, p)
+    return repo
+
+
+def verify_hf_access(
+    stack: str = "bodhan", token: Optional[str] = None, timeout: int = 20
+) -> dict:
+    """Probe the gated repos ``stack`` needs and return an access verdict.
+
+    Returns ``{"token", "source", "results"}`` where each result is ``True``
+    (readable), ``False`` (definite 401/403: invalid token or no access) or
+    ``None`` (undecidable).
+    """
+    _ensure_import_path()
+    from mr_mt.secrets import hf_token_can_access, select_hf_token
+
+    required = _required_gated(stack)
+    if token is None:
+        token, source = select_hf_token(required, timeout=timeout)
+    else:
+        source = "provided"
+    results = {
+        f"{repo_type}/{repo_id}": (
+            hf_token_can_access(token, repo_type, repo_id, timeout) if token else False
+        )
+        for repo_type, repo_id in required
+    }
+    return {"token": token, "source": source, "results": results}
+
+
+def _report_access(results: dict) -> None:
+    """Print an actionable block when a gated repo is definitively unreadable."""
+    blocked = [repo for repo, ok in results.items() if ok is False]
+    if not blocked:
+        return
+    lines = [
+        "",
+        "!" * 72,
+        "ACTION REQUIRED: the HF token cannot read every gated repo this run needs:",
+        *[f"  - {repo}" for repo in blocked],
+        "",
+        "  Likely causes:",
+        "   1. the token is invalid/expired - verify at",
+        "      https://huggingface.co/settings/tokens (whoami must succeed)",
+        "   2. the account has not been granted access - open the repo page and",
+        "      accept the license (auto-approved) or request access (manual",
+        "      approval can take hours, e.g. coild-aikosh/Education_v2)",
+        "  Fix HF_TOKEN in .env AND in the Kaggle hf-token dataset/Secret for every",
+        "  account, then re-run this kernel.",
+        "!" * 72,
+        "",
+    ]
+    print("\n".join(lines), file=sys.stderr)
+
+
+def activate(stack: str = "bodhan") -> Path:
+    """Set up paths, token, optional deps and rclone; return the repo dir."""
+    repo = _ensure_import_path()
     os.chdir(repo)
 
-    _install_deps(stack)
+    # 1. Resolve and VERIFY the HF token first. An unusable token (invalid, or
+    #    no access to a gated repo) is the most common launch failure and is
+    #    detectable in seconds - before the ~1-3 min pip install.
+    from mr_mt.secrets import select_hf_token  # noqa: E402 - after sys.path setup
 
-    from mr_mt.secrets import get_hf_token  # noqa: E402 - after sys.path setup
-
-    token = get_hf_token()
+    probe = get_setting("MR_MT_TOKEN_PROBE", "1").strip() != "0"
+    required = _required_gated(stack) if probe else []
+    token, source = select_hf_token(required)
     if token:
         os.environ["HF_TOKEN"] = token
         os.environ["HUGGING_FACE_HUB_TOKEN"] = token
@@ -219,8 +298,25 @@ def activate(stack: str = "bodhan") -> Path:
             file=sys.stderr,
         )
 
+    if required and token:
+        verdict = verify_hf_access(stack, token=token)
+        _report_access(verdict["results"])
+        print(
+            "[kaggle_env] access check: "
+            + ", ".join(
+                f"{repo}="
+                + ("ok" if ok else "BLOCKED" if ok is False else "unknown")
+                for repo, ok in verdict["results"].items()
+            )
+        )
+
+    # 2. Pinned stack, rclone config, summary.
+    _install_deps(stack)
     _configure_rclone()
-    print(f"[kaggle_env] repo={repo} stack={stack} token={'yes' if token else 'no'}")
+    print(
+        f"[kaggle_env] repo={repo} stack={stack} "
+        f"token={'yes' if token else 'no'} (from {source})"
+    )
     return repo
 
 def get_setting(name: str, default: str = "") -> str:
@@ -293,4 +389,43 @@ def rclone_fetch(
     except Exception as exc:  # noqa: BLE001 - best effort
         print(f"[kaggle_env] fetch failed ({exc}).", file=sys.stderr)
         return False
+
+
+def _cli(argv=None) -> int:
+    """Local pre-flight CLI.
+
+    ``python scripts/kaggle/kaggle_env.py --check-access [bodhan|indictrans2]``
+    resolves the HF token exactly as a kernel would and probes the gated repos
+    that session needs, so an invalid token / unaccepted license is caught
+    before a 12h GPU run is launched.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Kaggle env helpers (pre-flight).")
+    parser.add_argument(
+        "--check-access",
+        nargs="?",
+        const="bodhan",
+        default=None,
+        metavar="STACK",
+        help="probe the HF token against the gated repos a stack needs",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.check_access:
+        parser.print_help()
+        return 0
+
+    verdict = verify_hf_access(args.check_access)
+    print(f"stack        : {args.check_access}")
+    print(f"token source : {verdict['source']}")
+    for repo, ok in verdict["results"].items():
+        state = "OK     " if ok else "BLOCKED" if ok is False else "unknown"
+        print(f"  {state}  {repo}")
+    _report_access(verdict["results"])
+    return 1 if any(ok is False for ok in verdict["results"].values()) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
 

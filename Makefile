@@ -12,10 +12,15 @@ SESSION_C    := configs/sessionC_ablation.yaml
 
 export PYTHONPATH
 
-.PHONY: data train-a train-b train-c eval figures demo sync clean help
+.PHONY: data train-a train-b train-c eval figures demo test sync clean help
 
 help:
-	@echo "targets: data train-a train-b train-c eval figures demo sync clean"
+	@echo "targets: data train-a train-b train-c eval figures demo test sync clean"
+
+# Unit checks (stdlib unittest; probes mocked, no network): HF-token failover
+# chain + Kaggle --check-access pre-flight (see docs/SPEC.md).
+test:
+	$(PYTHON) -m unittest discover -s tests -v
 
 # Build data/processed/{train,dev,test}.jsonl from configs/base.yaml
 data:

@@ -61,9 +61,22 @@ if ($DryRun) {
 # The CLI reads the token from KAGGLE_API_TOKEN (per-account files, never committed).
 $env:KAGGLE_API_TOKEN = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
 try {
-  kaggle kernels push -p $staging
+  $pushOutput = kaggle kernels push -p $staging 2>&1 | Out-String
+  $pushOutput.Trim() | Write-Output
   if ($LASTEXITCODE -ne 0) { throw "kaggle kernels push failed (exit $LASTEXITCODE)" }
-  kaggle kernels status $meta.id
+
+  # Kaggle derives the kernel slug from the TITLE, which may differ from
+  # metadata "id"; the push output prints the canonical URL, so resolve the real
+  # slug from it (fall back to the metadata id).
+  $slug = $meta.id
+  $match = [regex]::Match($pushOutput, "kaggle\.com/code/([^\s/]+/[^\s/]+)")
+  if ($match.Success) { $slug = $match.Groups[1].Value.TrimEnd('.') }
+  if ($slug -ne $meta.id) {
+    Write-Output "note        : kernel slug is '$slug' (title-derived), not metadata id '$($meta.id)'"
+  }
+  kaggle kernels status $slug
+  Write-Output "logs        : kaggle kernels logs $slug"
+  Write-Output "output      : kaggle kernels output $slug -p artifacts"
 } finally {
   Remove-Item Env:\KAGGLE_API_TOKEN -ErrorAction SilentlyContinue
 }

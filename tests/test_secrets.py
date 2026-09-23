@@ -1,0 +1,237 @@
+"""Unit checks for the HF-token failover chain and the Kaggle pre-flight.
+
+No network: every probe (``urlopen`` / ``hf_token_can_access``) is mocked, and
+the developer's real tokens are cleared from the environment for each test.
+Run from the repo root:  ``python -m unittest discover -s tests -v``
+"""
+from __future__ import annotations
+
+import io
+import os
+import sys
+import unittest
+import urllib.error
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+from unittest import mock
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "src"))
+sys.path.insert(0, str(REPO / "scripts" / "kaggle"))
+
+from mr_mt import secrets  # noqa: E402
+
+try:  # kaggle_env is stdlib-only, but never let an import hiccup kill the suite
+    import kaggle_env  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    kaggle_env = None  # type: ignore[assignment]
+
+ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
+GATED = ("datasets", "coild-aikosh/Education_v2")
+
+
+def _http_error(code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("https://huggingface.co/x", code, "err", None, None)
+
+
+class _Resp:
+    """Minimal stand-in for an ``urlopen`` response (context manager + status)."""
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class SecretsFailoverTest(unittest.TestCase):
+    """Resolution order, dedupe and the gated-repo failover walk."""
+
+    def setUp(self) -> None:
+        self._saved = {key: os.environ.pop(key, None) for key in ENV_KEYS}
+
+    def tearDown(self) -> None:
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_env_token_used_when_no_probes_required(self) -> None:
+        os.environ["HF_TOKEN"] = "env-tok"
+        with mock.patch.object(secrets, "hf_token_can_access") as probe:
+            token, source = secrets.select_hf_token(())
+        self.assertEqual((token, source), ("env-tok", "env:HF_TOKEN"))
+        probe.assert_not_called()
+
+    def test_failover_bogus_env_token_to_dotenv(self) -> None:
+        """THE regression guard: a bad env token must fall through to .env."""
+        os.environ["HF_TOKEN"] = "bogus-env"
+        verdicts = {"bogus-env": False, "good-file": True}
+        probed: list = []
+
+        def _probe(token, repo_type, repo_id, timeout=20):
+            probed.append(token)
+            return verdicts.get(token)
+
+        with mock.patch.object(secrets, "_dotenv_value", return_value="good-file"), \
+                mock.patch.object(secrets, "hf_token_can_access", side_effect=_probe), \
+                redirect_stderr(io.StringIO()) as err:
+            token, source = secrets.select_hf_token([GATED])
+
+        self.assertEqual((token, source), ("good-file", "dotenv:.env"))
+        self.assertEqual(probed, ["bogus-env", "good-file"], "must walk the whole chain")
+        self.assertIn("env:HF_TOKEN", err.getvalue(), "rejection must be reported")
+
+    def test_all_candidates_rejected_falls_back_to_first(self) -> None:
+        os.environ["HF_TOKEN"] = "bogus-env"
+        with mock.patch.object(secrets, "_dotenv_value", return_value="also-bogus"), \
+                mock.patch.object(secrets, "hf_token_can_access", return_value=False), \
+                redirect_stderr(io.StringIO()) as err:
+            token, source = secrets.select_hf_token([GATED])
+        self.assertEqual((token, source), ("bogus-env", "env:HF_TOKEN"))
+        self.assertIn("no candidate passed", err.getvalue())
+
+    def test_no_candidates_at_all(self) -> None:
+        with mock.patch.object(secrets, "_dotenv_value", return_value=None):
+            token, source = secrets.select_hf_token([GATED])
+        self.assertEqual((token, source), (None, "none"))
+
+    def test_dedupe_yields_duplicate_value_once(self) -> None:
+        os.environ["HF_TOKEN"] = "same"
+        with mock.patch.object(secrets, "_dotenv_value", return_value="same"):
+            pairs = list(secrets.iter_hf_tokens())
+        self.assertEqual(pairs, [("env:HF_TOKEN", "same")])
+
+    def test_get_env_secret_prefers_env_then_file(self) -> None:
+        os.environ["MR_MT_TEST_KNOB"] = "env-key"
+        try:
+            self.assertEqual(secrets.get_env_secret("MR_MT_TEST_KNOB"), "env-key")
+        finally:
+            os.environ.pop("MR_MT_TEST_KNOB", None)
+        with mock.patch.object(secrets, "_dotenv_value", return_value="file-key"):
+            self.assertEqual(secrets.get_env_secret("MR_MT_TEST_KNOB"), "file-key")
+        with mock.patch.object(secrets, "_dotenv_value", return_value=None):
+            self.assertIsNone(secrets.get_env_secret("MR_MT_TEST_KNOB"))
+
+
+class ProbeSemanticsTest(unittest.TestCase):
+    """``hf_token_can_access`` must only fail on a definitive 401/403."""
+
+    def test_readable_returns_true(self) -> None:
+        with mock.patch("urllib.request.urlopen", return_value=_Resp(200)) as probe:
+            self.assertIs(secrets.hf_token_can_access("t", "datasets", "x/y"), True)
+        self.assertEqual(probe.call_count, 1)
+
+    def test_401_and_403_return_false_on_first_attempt(self) -> None:
+        for code in (401, 403):
+            with self.subTest(code=code):
+                with mock.patch("urllib.request.urlopen",
+                                side_effect=_http_error(code)) as probe:
+                    result = secrets.hf_token_can_access("t", "datasets", "x/y")
+                self.assertIs(result, False)
+                self.assertEqual(probe.call_count, 1, "401/403 is definitive")
+
+    def test_404_falls_through_to_next_filename(self) -> None:
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=[_http_error(404), _Resp(200)]) as probe:
+            self.assertIs(secrets.hf_token_can_access("t", "models", "x/y"), True)
+        self.assertEqual(probe.call_count, 2)
+
+    def test_all_404_is_undecidable_not_failure(self) -> None:
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=[_http_error(404)] * len(secrets._PROBE_FILES)) as probe:
+            self.assertIsNone(secrets.hf_token_can_access("t", "models", "x/y"))
+        self.assertEqual(probe.call_count, len(secrets._PROBE_FILES))
+
+    def test_network_error_is_undecidable_not_failure(self) -> None:
+        with mock.patch("urllib.request.urlopen",
+                        side_effect=urllib.error.URLError("offline")) as probe:
+            self.assertIsNone(secrets.hf_token_can_access("t", "models", "x/y"))
+        self.assertEqual(probe.call_count, len(secrets._PROBE_FILES),
+                         "offline box must not reject every candidate")
+
+
+class KaggleEnvPreFlightTest(unittest.TestCase):
+    """Stack gating, the access verdict and the ``--check-access`` CLI."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if kaggle_env is None:  # pragma: no cover - defensive
+            raise unittest.SkipTest("kaggle_env could not be imported")
+
+    def test_required_gated_stacks(self) -> None:
+        self.assertEqual(
+            kaggle_env._required_gated("bodhan"),
+            [("datasets", "coild-aikosh/Education_v2"),
+             ("models", "bodhan-ai/indic-translate")],
+        )
+        self.assertEqual(
+            kaggle_env._required_gated("indictrans2"),
+            [("datasets", "coild-aikosh/Education_v2"),
+             ("models", "ai4bharat/indictrans2-indic-indic-dist-320M")],
+        )
+        self.assertEqual(kaggle_env._required_gated("eval"),
+                         [("datasets", "coild-aikosh/Education_v2")])
+
+    def test_verify_hf_access_with_provided_token(self) -> None:
+        verdicts = {("datasets", "coild-aikosh/Education_v2"): False,
+                    ("models", "bodhan-ai/indic-translate"): True}
+        with mock.patch.object(
+            secrets, "hf_token_can_access",
+            side_effect=lambda t, rt, rid, timeout=20: verdicts[(rt, rid)],
+        ):
+            out = kaggle_env.verify_hf_access("bodhan", token="tok")
+        self.assertEqual(out["source"], "provided")
+        self.assertIs(out["results"]["datasets/coild-aikosh/Education_v2"], False)
+        self.assertIs(out["results"]["models/bodhan-ai/indic-translate"], True)
+
+    def test_verify_hf_access_resolves_token_when_not_given(self) -> None:
+        with mock.patch.object(secrets, "select_hf_token",
+                               return_value=("resolved", "env:HF_TOKEN")) as select, \
+                mock.patch.object(secrets, "hf_token_can_access", return_value=True):
+            out = kaggle_env.verify_hf_access("bodhan")
+        select.assert_called_once()
+        self.assertEqual((out["token"], out["source"]), ("resolved", "env:HF_TOKEN"))
+
+    def test_report_access_lists_only_blocked_repos(self) -> None:
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            kaggle_env._report_access({"datasets/coild-aikosh/Education_v2": False,
+                                       "models/bodhan-ai/indic-translate": True})
+        text = buf.getvalue()
+        self.assertIn("ACTION REQUIRED", text)
+        self.assertIn("datasets/coild-aikosh/Education_v2", text)
+        self.assertNotIn("models/bodhan-ai", text)
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            kaggle_env._report_access({"datasets/coild-aikosh/Education_v2": True})
+        self.assertEqual(buf.getvalue(), "", "all-OK must stay silent")
+
+    def test_cli_exit_code_reflects_verdict(self) -> None:
+        blocked = {"token": "t", "source": "dotenv:.env",
+                   "results": {"datasets/coild-aikosh/Education_v2": False}}
+        ok = {"token": "t", "source": "dotenv:.env",
+              "results": {"datasets/coild-aikosh/Education_v2": True}}
+        with mock.patch.object(kaggle_env, "verify_hf_access", return_value=blocked), \
+                redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            self.assertEqual(kaggle_env._cli(["--check-access", "bodhan"]), 1)
+        self.assertIn("BLOCKED", out.getvalue())
+        with mock.patch.object(kaggle_env, "verify_hf_access", return_value=ok), \
+                redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            self.assertEqual(kaggle_env._cli(["--check-access", "bodhan"]), 0)
+        self.assertIn("OK", out.getvalue())
+
+    def test_ensure_import_path(self) -> None:
+        repo = kaggle_env._ensure_import_path()
+        self.assertTrue((repo / "src" / "mr_mt").is_dir())
+        self.assertIn(str(repo / "src"), sys.path)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+
+
