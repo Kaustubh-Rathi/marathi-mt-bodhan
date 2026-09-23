@@ -76,5 +76,19 @@ All code targets Python 3.11 (Kaggle). Package root: `src/mr_mt` imported as `mr
 ### mr_mt/tracking.py
 - `TBLogger` thin wrapper; `append_run(run: dict, path="reports/experiments.csv")`.
 
+### mr_mt/checkpointing.py
+- `CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote, rclone_binary, rclone_dest)` —
+  TrainerCallback `on_save` writes an adapter-only copy of each `checkpoint-<step>`
+  under `mirror_dir` and best-effort `rclone copy`s it when a remote is set.
+- `build_mirror_callback(cfg) -> CheckpointMirrorCallback` from `cfg["checkpointing"]`.
+
+### scripts/kaggle/ (Kaggle script kernels, not notebooks)
+- `bootstrap.activate(stack) -> repo_dir` — locate/clone repo, add `src` +
+  `scripts/kaggle` to path, chdir, export HF token, optional pip install
+  (`MR_MT_INSTALL=1`) and rclone config.
+- `prepare_data.py`, `train_bodhan.py`, `train_indictrans2.py`, `evaluate.py` — thin
+  entrypoints; `kernel-metadata.*.json` set `kernel_type: script`, GPU, internet,
+  and the private `hf-token` dataset.
+
 ## Config schema (configs/base.yaml)
 See `configs/base.yaml`. Cell configs inherit and override.

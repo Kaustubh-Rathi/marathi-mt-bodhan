@@ -37,3 +37,6 @@ vendor/*
 # kaggle / hf caches
 .kaggle/
 .cache/
+
+# machine-specific helper (rclone binary path); sync_drive.ps1 falls back to PATH
+scripts/rclone_path.txt
