@@ -46,3 +46,10 @@ training:
   optim: adamw_torch
   weight_decay: 0.01
   max_grad_norm: 1.0
+  save_total_limit: null
+  save_only_model: false
+
+checkpointing:
+  mirror_dir: /kaggle/working/cellB/checkpoint_mirror
+  adapter_only_copy: true
+  rclone_remote: ""

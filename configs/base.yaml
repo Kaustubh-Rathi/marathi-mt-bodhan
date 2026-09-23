@@ -42,7 +42,8 @@ training:
   max_steps: 1000
   num_train_epochs: 0
   save_steps: 100
-  save_total_limit: 3  # keep only the 3 most recent checkpoints to bound disk growth
+  save_total_limit: null  # keep ALL checkpoints; each is mirrored off the VM
+  save_only_model: false  # resumeable; adapter-only copies are mirrored separately
   eval_steps: 100
   logging_steps: 10
   bf16: true
@@ -71,6 +72,16 @@ hub:
   push_to_hub: false
   repo_id: ""
   strategy: all_checkpoints
+  private: true
+
+checkpointing:
+  # Adapter-only copy of every checkpoint, written here and (optionally) rcloned
+  # to persistent storage. Hub push (hub.strategy: all_checkpoints) is the
+  # primary resumeable path; this is the Drive mirror for the deliverable.
+  mirror_dir: /kaggle/working/run/checkpoint_mirror
+  adapter_only_copy: true
+  rclone_remote: ""     # e.g. gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints (empty = local only)
+  rclone_binary: rclone
 
 prepare:
   dataset: coild-aikosh/Education_v2
@@ -92,13 +103,13 @@ eval:
   benchmarks:
     - name: in22_gen
       dataset: ai4bharat/IN22-Gen
-      config: null  # IN22-Gen has a single 'default' config; None is valid for load_dataset
-      split: test  # IN22-Gen exposes exactly one split: 'test'
+      config: hin_Deva-mar_Deva  # pairing config (hyphenated); do not use 'all'
+      split: gen
       src_lang: hin_Deva
       tgt_lang: mar_Deva
     - name: flores_devtest
       dataset: facebook/flores
-      config: all  # flores configs are per-language plus 'all'
+      config: hin_Deva-mar_Deva  # pairing config; gated, accept conditions
       split: devtest
       src_lang: hin_Deva
       tgt_lang: mar_Deva

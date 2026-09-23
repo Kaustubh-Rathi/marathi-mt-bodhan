@@ -34,3 +34,8 @@ training:
 hub:
   push_to_hub: false
   repo_id: "your-hf-user/indic-translate-mr-education-lora"
+
+checkpointing:
+  mirror_dir: /kaggle/working/cellC/checkpoint_mirror
+  adapter_only_copy: true
+  rclone_remote: ""

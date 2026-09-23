@@ -37,6 +37,7 @@ import torch
 
 from mr_mt import config as config_mod
 from mr_mt import utils as utils_mod
+from mr_mt.checkpointing import build_mirror_callback
 
 
 # ---------------------------------------------------------------------------
@@ -350,10 +351,15 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         report_to=t.get("report_to", ["tensorboard"]),
         logging_dir=t.get("logging_dir", os.path.join(output_dir, "logs")),
         save_strategy="steps",
-        save_total_limit=int(t.get("save_total_limit", 3)),
+        # None = keep ALL checkpoints (every one is mirrored off the VM by the
+        # CheckpointMirrorCallback + optional Hub push).
+        save_total_limit=t.get("save_total_limit", None),
+        save_only_model=bool(t.get("save_only_model", False)),
         push_to_hub=bool(hub.get("push_to_hub", False)),
         hub_model_id=hub.get("repo_id") or None,
         hub_strategy=hub.get("strategy", "all_checkpoints"),
+        hub_token=utils_mod.get_hf_token(),
+        hub_private_repo=bool(hub.get("private", True)),
         max_length=int(t.get("max_seq_length", 1024)),
         packing=bool(t.get("packing", False)),
         # No dataset_text_field: the dataset is conversational and TRL
@@ -368,6 +374,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         sft_kwargs["neftune_noise_alpha"] = t["neftune_noise_alpha"]
 
     args = SFTConfig(**sft_kwargs)
+    callback = build_mirror_callback(cfg)
     trainer = SFTTrainer(
         model=model,
         args=args,
@@ -375,6 +382,7 @@ def build_trainer(cfg: dict, model, tokenizer, train_dataset=None):
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
         peft_config=build_lora(cfg),
+        callbacks=[callback],
     )
     return trainer
 

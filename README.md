@@ -5,7 +5,7 @@ and deliver an end-to-end run with clean code, honest docs, and reproducible art
 
 - **Primary:** [`bodhan-ai/indic-translate`](https://huggingface.co/bodhan-ai/indic-translate)
   (Gemma-4 E4B, 8B, gated) fine-tuned with QLoRA.
-- **Fallback:** [`ai4bharat/indictrans2-en-indic-dist-200M`](https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M)
+- **Fallback:** [`ai4bharat/indictrans2-indic-indic-dist-320M`](https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M)
   (MIT) + IndicTransToolkit, direction `hin_Deva → mar_Deva`.
 - **Train:** [`coild-aikosh/Education_v2`](https://huggingface.co/datasets/coild-aikosh/Education_v2)
   HIN–MAR (education-domain, CC-BY-4.0).
@@ -27,19 +27,24 @@ marathi-mt-bodhan/
 ├── configs/
 │   └── base.yaml              # shared config; cell configs inherit + override
 ├── src/mr_mt/                 # package root (import as `mr_mt`, PYTHONPATH=src)
-│   ├── config.py              # load_config / resolve (deep merge)
-│   ├── utils.py               # get_hf_token, seeds, jsonl IO, experiment logging
+│   ├── config.py              # load_config / load_cell_config (deep merge)
+│   ├── utils.py               # get_hf_token (Kaggle Dataset/Secret/env/.env), seeds, JSONL IO
 │   ├── tracking.py            # TBLogger, experiments.csv append
+│   ├── checkpointing.py       # CheckpointMirrorCallback (adapter-only mirror + optional rclone)
 │   ├── data/                  # download.py, prepare.py, decontaminate.py
 │   ├── train_bodhan_qlora.py  # Session A (primary, 8B QLoRA)
-│   ├── train_indictrans2_lora.py  # Session B (fallback, 200M LoRA)
+│   ├── train_indictrans2_lora.py  # Session B (fallback, 320M LoRA)
 │   ├── evaluate.py            # IN22-Gen + FLORES scoring -> metrics.json
 │   ├── inference.py           # single-string translate CLI
 │   └── plots.py               # loss / length-hist / metric-bar figures
-├── scripts/                   # Kaggle + Drive helpers (incl. sync_drive.ps1)
+├── scripts/
+│   ├── kaggle/                # Kaggle SCRIPT kernels (no notebooks): bootstrap + run_*.py + metadata
+│   ├── run_train_cellA.sh, run_train_cellB.sh, run_data.sh, run_eval.sh
+│   ├── pull_kaggle_output.ps1 # Kaggle Output -> local artifacts/
+│   └── sync_drive.ps1         # artifacts/ -> gdrive:mr-mt-edu-2026/
 ├── docs/
 │   ├── SPEC.md                # interface spec (function contracts, config schema)
-│   ├── SETUP.md               # HF login, Kaggle secrets, two envs, GPU notes
+│   ├── SETUP.md               # HF login, Kaggle Dataset token, two envs, GPU notes
 │   └── TRAINING.md            # per-session runs, resume, monitoring, pull flow
 ├── data/
 │   ├── raw/                   # gitignored (except .gitkeep)
@@ -50,7 +55,6 @@ marathi-mt-bodhan/
 │   ├── metrics.json           # eval output (TODO until runs complete)
 │   ├── figures/               # plots.py output
 │   └── predictions/           # <split>_preds.txt + .refs.txt
-├── notebooks/                 # Kaggle session notebooks (cells A/B/C)
 ├── models/                    # gitignored weights staging (adapters only in Hub/Drive)
 ├── vendor/                    # NO-LICENSE local references only, gitignored, never committed
 └── requirements.txt           # Session A/C stack pinned; Session B installed separately
@@ -85,8 +89,32 @@ make train-a
 | `eval` decoding | 256 new tokens, beam 5 | IN22-Gen/FLORES scoring config |
 | `report_to` | `tensorboard` | Deliberate: TB + CSV, no MLflow server / W&B (see APPROACH.md §2) |
 
-Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.resolve` and override only
+Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.load_cell_config` and override only
 `run.name`, `output_dir`, model/lora blocks, and `hub.repo_id`.
+
+## Checkpoints (kept in full)
+
+Training keeps **all** checkpoints (`save_total_limit: null`) and every saved
+`checkpoint-<step>` is pushed off the ephemeral VM:
+
+1. **HF Hub** — `hub.strategy: all_checkpoints` streams each checkpoint (resumeable);
+   enable with `hub.push_to_hub: true` + a real `hub.repo_id`.
+2. **Drive (deliverable)** — `CheckpointMirrorCallback` writes an adapter-only copy
+   per checkpoint to `checkpointing.mirror_dir`, and can `rclone` it live to Drive
+   when `checkpointing.rclone_remote` is set.
+3. **Post-run sync** — `scripts/pull_kaggle_output.ps1` → `scripts/sync_drive.ps1`
+   copies the full tree to `gdrive:mr-mt-edu-2026/<run>/`.
+
+## Running on Kaggle (no notebooks)
+
+Kaggle `kernel_type: script` entrypoints live in [`scripts/kaggle/`](scripts/kaggle/).
+Set up a private `hf-token` Dataset, edit the `kernel-metadata.*.json` slugs, then:
+
+```bash
+kaggle kernels push -p scripts/kaggle
+```
+
+See [scripts/kaggle/README.md](scripts/kaggle/README.md) for the full flow.
 
 ## Model & dataset links
 
@@ -94,11 +122,11 @@ Cell configs (sessions A/B/C) inherit `base.yaml` via `mr_mt.config.resolve` and
 | -------- | ---- | ---------------- |
 | Primary model `bodhan-ai/indic-translate` | https://huggingface.co/bodhan-ai/indic-translate | Gated; Indic Open Model License v1.0 (share-alike) |
 | Base weights `google/gemma-4-E4B-it` | https://huggingface.co/google/gemma-4-E4B-it | Gated (accept license) |
-| Fallback `ai4bharat/indictrans2-en-indic-dist-200M` | https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M | MIT |
+| Fallback `ai4bharat/indictrans2-indic-indic-dist-320M` | https://huggingface.co/ai4bharat/indictrans2-indic-indic-dist-320M | MIT |
 | Train `coild-aikosh/Education_v2` (HIN–MAR) | https://huggingface.co/datasets/coild-aikosh/Education_v2 | Gated; CC-BY-4.0 |
 | Eval `ai4bharat/IN22-Gen` | https://huggingface.co/datasets/ai4bharat/IN22-Gen | Gated (accept license) |
 | Eval `facebook/flores` devtest | https://huggingface.co/datasets/facebook/flores | Gated (accept license) |
-| Session artifacts (Drive) | `gdrive:mr-mt-edu-2026/cell-{A,B,C}` — share URL: <!-- TODO: paste Drive link after runs --> | Checkpoints every 100 steps + `metrics.json` |
+| Session artifacts (Drive) | `gdrive:mr-mt-edu-2026/{bodhan-qlora,indictrans2-lora,eval}` — share URL: <!-- TODO: paste Drive link after runs --> | All checkpoints + `metrics.json` |
 
 ## License / attribution
 

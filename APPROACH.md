@@ -20,7 +20,7 @@
 
 | Option | Pros | Cons | Verdict |
 | ------ | ---- | ---- | ------- |
-| `ai4bharat/indictrans2-en-indic-dist-200M` (MIT, 200M) | Trains anywhere incl. T4; mature IndicTransToolkit; MIT license, zero gating friction | Capacity ceiling on education-domain fluency; still needs LoRA harness | **Fallback (Session B)** — guarantees a complete end-to-end story whatever happens on A |
+| `ai4bharat/indictrans2-indic-indic-dist-320M` (MIT, 320M) | Trains anywhere incl. T4; mature IndicTransToolkit; supports hin_Deva source directly | Capacity ceiling on education-domain fluency; still needs LoRA harness | **Fallback (Session B)** — guarantees a complete end-to-end story whatever happens on A |
 | `bodhan-ai/indic-translate` (Gemma-4 E4B, 8B, gated) | Assignment-aligned (Bodhan pick); strongest Marathi prior; instruction-tuned chat template | 8B needs 4-bit QLoRA + careful Gemma-4 handling; gated + share-alike license | **Primary (Session A)** — where the effort goes |
 
 ### 2b. Fine-tune stack: Unsloth vs TRL+PEFT vs Axolotl
@@ -37,7 +37,7 @@
 | ------ | ---- | ---- | ------- |
 | MLflow server | Rich registry | Needs a hosted server we don't have; overkill for 3 runs | **Rejected** |
 | W&B | Nice dashboards | Account/egress friction across 3 Kaggle accounts; external dependency | **Rejected** |
-| **TensorBoard + `reports/experiments.csv` + `metrics.json` + Drive sync** | Zero infra; per-cell TB logs (`gdrive:mr-mt-edu-2026/cell-{A,B,C}`); CSV is the human index | Manual figure assembly | **Chosen** |
+| **TensorBoard + `reports/experiments.csv` + `metrics.json` + Drive sync** | Zero infra; per-run TB logs (`gdrive:mr-mt-edu-2026/<run>`); CSV is the human index | Manual figure assembly | **Chosen** |
 
 ### 2d. Compute: single vs multi-account Kaggle
 
@@ -53,7 +53,7 @@
   Gemma-4 E4B 8B instruction-tuned for Indic translation. QLoRA (4-bit NF4, all-linear LoRA)
   is the only way 8B fits Kaggle GPUs, and the public Arushhh recipe gives a proven
   configuration to mirror rather than re-search under a 30h budget.
-- **Fallback: `ai4bharat/indictrans2-en-indic-dist-200M` + IndicTransToolkit**
+- **Fallback: `ai4bharat/indictrans2-indic-indic-dist-320M` + IndicTransToolkit**
   (`hin_Deva->mar_Deva`). MIT-licensed, 200M params, trains on any Kaggle GPU. Guarantees
   submittable artifacts + metrics even if Session A stalls on VRAM or gating.
 - **Attribution (license compliance):** outputs derived from `indic-translate` carry

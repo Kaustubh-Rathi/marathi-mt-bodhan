@@ -1,7 +1,7 @@
 """Session B fallback trainer: LoRA fine-tune IndicTrans2 for hin_Deva -> mar_Deva.
 
 Uses the AI4Bharat IndicTrans2 ``huggingface_interface`` model
-(``ai4bharat/indictrans2-en-indic-dist-200M``) together with the MANDATORY
+(``ai4bharat/indictrans2-indic-indic-dist-320M``) together with the MANDATORY
 ``IndicTransToolkit`` preprocessing/collator utilities.
 
 Stability guards for the known random-segfault issue (upstream #117):
@@ -36,6 +36,7 @@ from transformers import (
     Seq2SeqTrainingArguments,
 )
 
+from mr_mt.checkpointing import build_mirror_callback
 from mr_mt.config import load_base_and_cell
 from mr_mt.utils import ensure_dir, get_hf_token, log_experiment, read_jsonl, set_seed
 
@@ -148,6 +149,7 @@ def build_trainer(
         Configured ``Seq2SeqTrainer`` (not yet trained).
     """
     t = cfg["training"]
+    hub = cfg.get("hub", {})
     args = Seq2SeqTrainingArguments(
         output_dir=cfg["run"]["output_dir"],
         per_device_train_batch_size=int(t.get("per_device_train_batch_size", 8)),
@@ -159,6 +161,9 @@ def build_trainer(
         warmup_ratio=float(t.get("warmup_ratio", 0)),
         max_steps=int(t.get("max_steps", 3000)),
         save_steps=int(t.get("save_steps", 500)),
+        # None = keep ALL checkpoints; each is mirrored off the VM.
+        save_total_limit=t.get("save_total_limit", None),
+        save_only_model=bool(t.get("save_only_model", False)),
         evaluation_strategy="steps",
         eval_steps=int(t.get("eval_steps", 500)),
         logging_steps=int(t.get("logging_steps", 10)),
@@ -174,6 +179,11 @@ def build_trainer(
         predict_with_generate=True,
         generation_num_beams=int(cfg.get("eval", {}).get("num_beams", 5)),
         generation_max_length=int(cfg.get("eval", {}).get("max_new_tokens", 256)),
+        push_to_hub=bool(hub.get("push_to_hub", False)),
+        hub_model_id=hub.get("repo_id") or None,
+        hub_strategy=hub.get("strategy", "all_checkpoints"),
+        hub_token=get_hf_token(),
+        hub_private_repo=bool(hub.get("private", True)),
         # Segfault guard (upstream #117): no multiprocessed data loading.
         dataloader_num_workers=0,
         remove_unused_columns=False,
@@ -186,10 +196,11 @@ def build_trainer(
         eval_dataset=eval_ds,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        callbacks=[build_mirror_callback(cfg)],
     )
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """CLI: train the Session B IndicTrans2 LoRA adapter and log the run."""
     parser = argparse.ArgumentParser(
         description="Session B fallback: LoRA fine-tune IndicTrans2 (hin_Deva->mar_Deva)."
@@ -200,7 +211,7 @@ def main() -> None:
         default=None,
         help="Optional path to base.yaml (defaults to base.yaml next to --config).",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     cell_path = Path(args.config)
     base_path = Path(args.base) if args.base else cell_path.parent / "base.yaml"

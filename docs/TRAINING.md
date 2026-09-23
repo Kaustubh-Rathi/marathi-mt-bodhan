@@ -2,7 +2,7 @@
 
 Sessions: **A** = Bodhan 8B QLoRA (Acct1, primary) · **B** = IndicTrans2
 indic-indic-dist-320M LoRA (Acct2, fallback) · **C** = ablation/demo (Acct3). Config: `configs/base.yaml`
-(cell configs inherit via `mr_mt.config.resolve` and override `run.name`,
+(cell configs inherit via `mr_mt.config.load_base_and_cell` and override `run.name`,
 `output_dir`, `hub.repo_id`).
 
 ## Session A — Bodhan 8B QLoRA (primary)
@@ -68,7 +68,29 @@ under `output_dir`; the default is `None` = fresh start).
 
 - `save_steps: 100`, `eval_steps: 100`, `logging_steps: 10` (`configs/base.yaml`).
 - Never increase `save_steps` past 100 on Kaggle: a 12h kill must cost ≤ 1 interval.
-- Keep **all** checkpoints until eval passes; prune only after `metrics.json` is written.
+- Keep **all** checkpoints (`save_total_limit: null`) until eval passes; prune only
+  after `metrics.json` is written.
+
+## Checkpoint persistence (keep every checkpoint)
+
+`/kaggle/working` is ephemeral and only saved on a successful run, so checkpoints
+are pushed off the VM as they are written:
+
+1. **HF Hub (primary, resumeable):** set `hub.push_to_hub: true` + a real
+   `hub.repo_id` in the cell config; `hub.strategy: all_checkpoints` streams every
+   checkpoint. A **write-role** `HF_TOKEN` is required to push.
+2. **Adapter-only mirror + optional live rclone:** `CheckpointMirrorCallback`
+   (`src/mr_mt/checkpointing.py`) copies adapter weights/config/tokenizer/
+   `trainer_state.json` for each checkpoint into `checkpointing.mirror_dir`, and if
+   `checkpointing.rclone_remote` is set (e.g.
+   `gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints`) runs `rclone copy` for it.
+   Mount rclone creds via a private `gdrive-creds` Kaggle Dataset (see
+   `scripts/kaggle/bootstrap.py::_configure_rclone`).
+3. **Post-run Drive sync (authoritative):** `scripts/pull_kaggle_output.ps1` →
+   `scripts/sync_drive.ps1` copies the full tree to `gdrive:mr-mt-edu-2026/<run>/`.
+
+> With `push_to_hub: false` and no rclone, nothing leaves the VM mid-run: a 12h
+> timeout loses all progress. Enable at least one of the two.
 
 ## What to monitor
 
