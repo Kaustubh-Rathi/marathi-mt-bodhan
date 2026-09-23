@@ -27,20 +27,29 @@ Account → task mapping (each account runs its own kernel):
 
 ## Launch
 
-```bash
-# from the repo root
-kaggle kernels push -p scripts/kaggle      # uses kernel-metadata.*.json found there
+`kaggle kernels push -p <dir>` REQUIRES `<dir>/kernel-metadata.json`, so the
+named `kernel-metadata.<task>.json` files cannot be pushed directly. Use the
+helper, which stages exactly one kernel and authenticates with that task's
+account token:
 
-# if multiple metadata files exist, push a single one by pointing -p at a dir
-# containing only the desired metadata, or rename the target to kernel-metadata.json
-kaggle kernels status  your-kaggle-username/marathi-mt-bodhan-train
-kaggle kernels output  your-kaggle-username/marathi-mt-bodhan-train -p artifacts
+```powershell
+# from the repo root (add -DryRun to see the plan without pushing)
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task bodhan
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task indictrans2
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task prepare -Acct 3
 ```
 
-`kaggle kernels push -p <dir>` expects that directory to contain a
-`kernel-metadata.json`. Keep one target directory in flight at a time, or copy
-the desired `kernel-metadata.<task>.json` to `kernel-metadata.json` before
-pushing.
+It maps task → account by default (`prepare` = acct3, `bodhan`/`eval` = acct1,
+`indictrans2` = acct2) and override the token with `-Acct <1|2|3>`. Then:
+
+```bash
+kaggle kernels status  kaustubhcrathi/marathi-mt-bodhan-train
+kaggle kernels output  kaustubhcrathi/marathi-mt-bodhan-train -p artifacts
+```
+
+Pushing a *train* kernel starts the run immediately; since the train kernels
+auto-run download+prepare when `data/processed` is missing, the separate
+`prepare` kernel is only needed to stage data locally.
 
 ## Entry points
 
@@ -57,7 +66,7 @@ pushing.
 | --- | ------- | ------ |
 | `MR_MT_REPO_DIR` | `/kaggle/working/marathi-mt-bodhan` | repo location |
 | `MR_MT_REPO_URL` | `https://github.com/Kaustubh-Rathi/marathi-mt-bodhan.git` | git clone URL |
-| `MR_MT_INSTALL` | `0` | `1` → pip-install the pinned stack (bodhan vs indictrans2) |
+| `MR_MT_INSTALL` | `1` | `0` → use the image's own packages; otherwise pip-install the pinned stack for the kernel's session (`bodhan` vs `indictrans2`) before training |
 | `MR_MT_RESUME` | `""` | `auto` → restore latest confirmed Drive checkpoint and resume (train kernels) |
 | `MR_MT_ADAPTER` | `""` | adapter path/id for `kernel_evaluate.py`; empty → auto-fetch latest confirmed checkpoint from Drive |
 | `MR_MT_FAMILY` | `bodhan` | `bodhan` or `indictrans2` for `kernel_evaluate.py` |

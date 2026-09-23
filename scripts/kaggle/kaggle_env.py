@@ -88,12 +88,21 @@ def _find_repo() -> Path:
 
 
 def _install_deps(stack: str) -> None:
-    """pip-install the pinned deps when ``MR_MT_INSTALL=1`` (off by default)."""
-    if os.environ.get("MR_MT_INSTALL", "0") != "1":
+    """pip-install the pinned stack unless explicitly disabled.
+
+    Default is ON: the pinned stack *is* the proven configuration, and the
+    Kaggle image's own versions drift (Gemma-4 needs ``transformers>=5.5.2``;
+    IndicTrans2 needs ``<5``). Installing costs ~2-3 minutes per run versus a
+    12h session dying on an incompatible library. Set ``MR_MT_INSTALL=0``
+    (env var or Kaggle Secret) to use the image's own packages instead.
+    """
+    if get_setting("MR_MT_INSTALL", "1").strip() == "0":
+        print("[kaggle_env] MR_MT_INSTALL=0 -> using the image's own packages")
         return
     pins = STACK_PINS.get(stack, [])
     if not pins:
         return
+    print(f"[kaggle_env] installing pinned '{stack}' stack: {' '.join(pins)}")
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "-q", *pins],
         check=True,

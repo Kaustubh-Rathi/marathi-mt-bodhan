@@ -120,12 +120,18 @@ state (`save_only_model: false`), and gets them off the ephemeral Kaggle VM:
 ## Running on Kaggle (no notebooks)
 
 Kaggle `kernel_type: script` entrypoints live in [`scripts/kaggle/`](scripts/kaggle/).
-The token is delivered by private `hf-token` Datasets already created for the
-three accounts; the repo URL is set in `kaggle_env.py`. Then:
+`kaggle kernels push -p <dir>` requires a literal `kernel-metadata.json`, so push
+one kernel at a time with the helper (it stages the metadata and uses that task's
+account token):
 
-```bash
-kaggle kernels push -p scripts/kaggle
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task bodhan      # acct1 (primary)
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task indictrans2 # acct2 (fallback)
 ```
+
+The token arrives via the attached private `hf-token` Dataset (or the `HF_TOKEN`
+Kaggle Secret) and the repo URL is set in `kaggle_env.py`; train kernels
+auto-install the pinned stack and auto-prepare `data/processed` when missing.
 
 See [scripts/kaggle/README.md](scripts/kaggle/README.md) for the full flow.
 
