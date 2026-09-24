@@ -1,6 +1,31 @@
-<html><head><meta charset='utf-8'>
-<title>Marathi MT via Bodhan Fine-Tune - Submission</title>
-<style>
+"""Build the single consolidated submission PDF.
+
+The brief asks for ONE readable document: end-to-end run, code structure,
+judgement and problem-solving (explicitly NOT metrics). So this assembles a
+curated ~8 page write-up instead of dumping every doc in the repo - the long
+form lives in APPROACH.md / docs/ and is linked, not photocopied.
+
+    python scripts/build_submission_pdf.py
+    msedge --headless --no-pdf-header-footer --print-to-pdf=out.pdf file:///...
+
+Every number is read from reports/ (synced from the Kaggle runs), so the
+document cannot drift from the artifacts it describes.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT_DIR = ROOT / "submission"
+OUT_HTML = OUT_DIR / "marathi-mt-bodhan-submission.html"
+
+GITHUB_URL = "https://github.com/Kaustubh-Rathi/marathi-mt-bodhan"
+DRIVE_URL = "https://drive.google.com/drive/folders/1Abt7fldMDl_4pjTa3ayDbLl1dqDZSUTD"
+
+CSS = """
 @page { size: A4; margin: 15mm 14mm; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 9.6pt;
        line-height: 1.42; color: #16202a; max-width: 880px; margin: 0 auto; }
@@ -33,28 +58,73 @@ a { color: #12507d; }
 .linkbox b { color: #0b3d63; }
 .ok { color: #1b7a3d; font-weight: 600; }
 .small { font-size: 8.6pt; color: #4a5b6b; }
-</style></head><body>
+"""
 
+
+def run_rows() -> str:
+    """Training table, read from the experiments.csv each run wrote."""
+    out = []
+    for label, sub in (
+        ("A &mdash; primary: Bodhan 8B QLoRA", "bodhan-qlora"),
+        ("B &mdash; fallback: IndicTrans2 200M LoRA", "indictrans2-lora"),
+        ("C &mdash; ablation (r 16/&alpha;32, LR 5e-5)", "ablation"),
+    ):
+        csv = ROOT / "reports" / sub / "experiments.csv"
+        if not csv.is_file():
+            continue
+        rows = [l for l in csv.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if len(rows) < 2:
+            continue
+        c = rows[1].split(",")
+        out.append(
+            f"<tr><td>{label}</td><td>{c[4]}</td><td>{c[10]}</td>"
+            f"<td class='ok'>{c[13]}</td><td>{c[16] or '&ndash;'}</td></tr>"
+        )
+    return "".join(out)
+
+
+def metric_rows() -> str:
+    """Held-out evaluation table, read from the eval run's metrics.json."""
+    path = ROOT / "reports" / "indictrans2-lora" / "metrics.json"
+    if not path.is_file():
+        return "<tr><td colspan='4'>pending</td></tr>"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out = []
+    for key, nice in (
+        ("in22_gen", "IN22-Gen test (n=1024)"),
+        ("flores_devtest", "FLORES eng_Latn&ndash;mar_Deva devtest (n=1012)"),
+    ):
+        d = data.get(key, {})
+        out.append(
+            f"<tr><td>{nice}</td><td>{d.get('bleu', 0):.2f}</td>"
+            f"<td>{d.get('chrf', 0):.2f}</td><td>{d.get('chrf++', 0):.2f}</td></tr>"
+        )
+    return "".join(out)
+
+
+def build() -> Path:
+    cover = f"""
 <div class='cover'>
   <h1>Marathi Machine Translation<br>via Bodhan Fine-Tune</h1>
   <div class='sub'>AI4Bharat &mdash; AI Research Engineer take-home<br>
     English &rarr; Marathi (eng_Latn &rarr; mar_Deva)</div>
   <div class='linkbox'><b>Source code:</b>
-    <a href='https://github.com/Kaustubh-Rathi/marathi-mt-bodhan'>https://github.com/Kaustubh-Rathi/marathi-mt-bodhan</a></div>
+    <a href='{GITHUB_URL}'>{GITHUB_URL}</a></div>
   <div class='linkbox'><b>Artifacts, checkpoints &amp; logs:</b>
-    <a href='https://drive.google.com/drive/folders/1Abt7fldMDl_4pjTa3ayDbLl1dqDZSUTD'>https://drive.google.com/drive/folders/1Abt7fldMDl_4pjTa3ayDbLl1dqDZSUTD</a></div>
+    <a href='{DRIVE_URL}'>{DRIVE_URL}</a></div>
   <div class='linkbox' style='border-left-color:#ffb300'><b>Primary model:</b>
     bodhan-ai/indic-translate (Gemma-4 E4B, 8B), QLoRA<br>
     <b>Train:</b> ai4bharat/samanantar (config <code>mr</code>), 8,000 pairs<br>
     <b>Eval (held out, never trained on):</b> ai4bharat/IN22-Gen (test),
     facebook/flores eng_Latn&ndash;mar_Deva (devtest)</div>
-</div>
+</div>"""
 
+    body_a = f"""
 <h1>1. What was delivered</h1>
 <p>Three fine-tuning sessions, each run end-to-end on a Kaggle GPU, with a full
 resumable checkpoint saved and mirrored to Drive every 5 optimizer steps.</p>
 <table><thead><tr><th>Session</th><th>Method</th><th>Steps</th><th>Status</th>
-<th>GPU</th></tr></thead><tbody><tr><td>A &mdash; primary: Bodhan 8B QLoRA</td><td>qlora</td><td>16</td><td class='ok'></td><td>&ndash;</td></tr><tr><td>B &mdash; fallback: IndicTrans2 200M LoRA</td><td>lora-seq2seq</td><td>16</td><td class='ok'></td><td>&ndash;</td></tr><tr><td>C &mdash; ablation (r 16/&alpha;32, LR 5e-5)</td><td>qlora</td><td>16</td><td class='ok'></td><td>&ndash;</td></tr></tbody></table>
+<th>GPU</th></tr></thead><tbody>{run_rows()}</tbody></table>
 <p>Session A is the assignment-aligned primary. Session B is an independent
 200M fallback that guarantees a complete story regardless of what happens on
 the 8B. Session C is a reduced-adapter / lower-LR ablation of A. Configs are
@@ -64,7 +134,7 @@ converged result.</p>
 
 <h2>Evaluation (Session B, held-out sets)</h2>
 <table><thead><tr><th>Test set</th><th>BLEU</th><th>chrF2</th><th>chrF2++</th>
-</tr></thead><tbody><tr><td>IN22-Gen test (n=1024)</td><td>20.91</td><td>54.10</td><td>49.82</td></tr><tr><td>FLORES eng_Latn&ndash;mar_Deva devtest (n=1012)</td><td>19.49</td><td>54.90</td><td>50.69</td></tr></tbody></table>
+</tr></thead><tbody>{metric_rows()}</tbody></table>
 
 <h1>2. Key decisions and why</h1>
 <table><thead><tr><th>Decision</th><th>Choice</th><th>Reasoning</th></tr></thead>
@@ -93,8 +163,8 @@ streams checkpoints to Drive, so a 12h kill costs at most one checkpoint.</td></
 <td>Paged optimizer absorbs T4 memory spikes. ZeRO-3 shards the frozen base out
 from under PEFT and is wrong for single-GPU LoRA.</td></tr>
 </tbody></table>
-
-
+"""
+    body_b = """
 <h1>3. Data, evaluation and decontamination</h1>
 <p><b>Dataset pivot.</b> The preferred education-domain set was access-gated and
 I was denied, so training uses the open <code>ai4bharat/samanantar</code>
@@ -167,5 +237,21 @@ learning rate or longer warmup is the first thing to change for a real run.</li>
 <code>docs/HYPERPARAMETERS.md</code> (every knob and its rationale),
 <code>docs/SPEC.md</code>, <code>docs/SETUP.md</code>,
 <code>docs/TRAINING.md</code>, and <code>reports/</code> for live artifacts.</p>
+"""
+    parts = [
+        "<html><head><meta charset='utf-8'>",
+        "<title>Marathi MT via Bodhan Fine-Tune - Submission</title>",
+        f"<style>{CSS}</style></head><body>",
+        cover,
+        body_a,
+        body_b,
+        "</body></html>",
+    ]
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUT_HTML.write_text("\n".join(parts), encoding="utf-8")
+    return OUT_HTML
 
-</body></html>
+
+if __name__ == "__main__":
+    path = build()
+    print(f"wrote {path} ({path.stat().st_size} bytes)")
