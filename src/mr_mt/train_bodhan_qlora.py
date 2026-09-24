@@ -243,17 +243,33 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
     token = get_hf_token(required=[("models", model_name)])
     trust_remote_code = bool(cfg["model"].get("trust_remote_code", True))
     bnb_cfg = cfg["model"].get("bnb", {})
-    # bf16 compute is only safe where the GPU supports it (A100+); T4/P100 must
-    # use fp16 or bitsandbytes will NaN/degrade.
+    # bf16 compute is only safe where the GPU natively supports it (A100+);
+    # T4/P100 must use fp16. IMPORTANT: trust the EXPLICIT trainer precision
+    # flags first — torch.cuda.is_bf16_supported() can report True on a T4
+    # (sm75 emulation), which silently put bf16 grads under the fp16
+    # GradScaler and crashed on the first optimizer step with
+    # "_amp_foreach_non_finite_check_and_unscale_cuda" not implemented for
+    # 'BFloat16'.
     bf16_ok = _is_bf16_supported()
-    compute_dtype = (
-        _compute_dtype("bfloat16" if bf16_ok else "float16")
-        if str(bnb_cfg.get("compute_dtype", "bfloat16"))
-        .lower()
-        .startswith(("bf", "bfloat"))
-        else _compute_dtype(bnb_cfg.get("compute_dtype", "bfloat16"))
+    tr_cfg = cfg.get("training", {})
+    want_fp16 = bool(tr_cfg.get("fp16", False))
+    want_bf16 = bool(tr_cfg.get("bf16", False))
+    if want_fp16 and not want_bf16:
+        compute_dtype = torch.float16
+    elif want_bf16 and not want_fp16:
+        compute_dtype = torch.bfloat16 if bf16_ok else torch.float16
+    else:
+        compute_dtype = (
+            _compute_dtype("bfloat16" if bf16_ok else "float16")
+            if str(bnb_cfg.get("compute_dtype", "bfloat16"))
+            .lower()
+            .startswith(("bf", "bfloat"))
+            else _compute_dtype(bnb_cfg.get("compute_dtype", "bfloat16"))
+        )
+    print(
+        f"[dtype] bf16_supported={bf16_ok} training_fp16={want_fp16} "
+        f"training_bf16={want_bf16} -> bnb compute_dtype={compute_dtype}"
     )
-    print(f"[dtype] bf16_supported={bf16_ok} -> bnb compute_dtype={compute_dtype}")
     load_in_4bit = bool(cfg["model"].get("load_in_4bit", True))
     quant_config = None
     if load_in_4bit:
@@ -362,6 +378,35 @@ def prepare_model_for_qlora(model, use_gradient_checkpointing: bool = True):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return model
+
+
+def align_dtypes_for_trainer(model, fp16: bool, bf16: bool) -> None:
+    """Force non-quantized params to the trainer's mixed-precision dtype.
+
+    The fp16 GradScaler's CUDA ``unscale_`` kernel does not accept bf16
+    tensors, so a stray bf16 parameter (e.g. LoRA adapters created after
+    load, or a checkpoint whose ``torch_dtype`` is bf16) crashes at the first
+    optimizer step. Cast bf16 <-> fp16 to match the active trainer mode.
+    Params4bit are skipped: their storage is packed and already uses the
+    bnb_4bit_compute_dtype set at load time. FP32 norm vectors are left
+    alone (GradScaler handles fp32 fine).
+    """
+    if bf16 and not fp16:
+        target, source = torch.bfloat16, torch.float16
+    elif fp16 and not bf16:
+        target, source = torch.float16, torch.bfloat16
+    else:
+        return
+    moved = 0
+    for param in model.parameters():
+        if param.dtype == source and param.__class__.__name__ != "Params4bit":
+            param.data = param.data.to(target)
+            moved += 1
+    if moved:
+        print(
+            f"[dtype] aligned {moved} parameter(s) {source} -> {target} "
+            "to match trainer mixed precision"
+        )
 
 # ---------------------------------------------------------------------------
 # LoRA config
@@ -668,7 +713,10 @@ def main(argv=None):
     model, tokenizer, processor = load_model_and_tokenizer(cfg)
 
     # GPU dtype: T4/P100 have no native bf16 -> use fp16 to avoid NaN/degraded
-    # QLoRA updates. A100+ keeps bf16.
+    # QLoRA updates. A100+ keeps bf16. torch.cuda.is_bf16_supported() can
+    # return True on a T4 via emulation, so a GPU capability check alone is
+    # NOT enough to pick bf16: an explicit fp16/bf16 pair in the config wins,
+    # and only when NEITHER flag is set do we fall back to capability.
     if _is_bf16_supported():
         cfg["training"]["bf16"] = bool(cfg["training"].get("bf16", True))
         cfg["training"]["fp16"] = bool(cfg["training"].get("fp16", False))
@@ -713,6 +761,18 @@ def main(argv=None):
             )
 
     trainer = build_trainer(cfg, model, tokenizer, processor=processor)
+    # Belt-and-braces: LoRA adapters are created INSIDE SFTTrainer's __init__,
+    # after load/prepare. If any came out bf16 while the trainer runs the fp16
+    # GradScaler, the first unscale_ raises NotImplementedError. Align here,
+    # once the real trainer model exists.
+    try:
+        align_dtypes_for_trainer(
+            trainer.model,
+            fp16=bool(cfg["training"].get("fp16")),
+            bf16=bool(cfg["training"].get("bf16")),
+        )
+    except Exception as exc:  # noqa: BLE001 - diagnostics only
+        print(f"WARNING: dtype alignment skipped ({exc}).", file=sys.stderr)
     try:
         trainer.model.print_trainable_parameters()
     except Exception:  # noqa: BLE001 - diagnostics only

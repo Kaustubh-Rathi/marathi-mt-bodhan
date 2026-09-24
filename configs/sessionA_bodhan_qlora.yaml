@@ -15,7 +15,6 @@ training:
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
   learning_rate: 1.0e-4
-  max_steps: 1000
   # Checkpoint after every 5 optimizer steps.  This deliberately happens
   # before the long run so a new Kaggle VM can prove step-1 and resume.
   save_steps: 5
