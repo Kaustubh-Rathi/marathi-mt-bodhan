@@ -1,5 +1,5 @@
 {
-  "id": "acajjhfh/marathi-mt-bodhan-qlora-ablation",
+  "id": "kaustubhcrathi/marathi-mt-bodhan-qlora-ablation",
   "title": "Marathi MT - Bodhan QLoRA ablation",
   "code_file": "kernel_train_ablation.py",
   "language": "python",
@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["acajjhfh/hf-token", "acajjhfh/gdrive-creds"],
+  "dataset_sources": ["kaustubhcrathi/hf-token", "kaustubhcrathi/gdrive-creds"],
   "keywords": [],
   "competition_sources": [],
   "kernel_sources": [],

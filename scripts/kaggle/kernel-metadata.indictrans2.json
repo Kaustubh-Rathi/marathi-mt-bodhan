@@ -1,5 +1,5 @@
 {
-  "id": "dreamexcellence/marathi-mt-indictrans2-lora-train",
+  "id": "kaustubhcrathi/marathi-mt-indictrans2-lora-train",
   "title": "Marathi MT - IndicTrans2 LoRA train",
   "code_file": "kernel_train_indictrans2.py",
   "language": "python",
@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["dreamexcellence/hf-token", "dreamexcellence/gdrive-creds"],
+  "dataset_sources": ["kaustubhcrathi/hf-token", "kaustubhcrathi/gdrive-creds"],
   "keywords": [],
   "competition_sources": [],
   "kernel_sources": [],
