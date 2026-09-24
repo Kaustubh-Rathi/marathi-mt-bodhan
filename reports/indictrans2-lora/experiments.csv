@@ -1,0 +1,3 @@
+run_id,account,session,base_model,method,r,alpha,lr,seq,batch,accum,steps,dev_chrf,dev_bleu,status,git_sha,data_hash,gpu,wall_hours,adapter_link,notes
+sessionB_indictrans2_lora,,sessionB,ai4bharat/indictrans2-en-indic-dist-200M,lora-seq2seq,16,32,0.0002,128,8,16,20,,,done,,,,,/kaggle/working/sessionB/adapter,Session B fallback IndicTrans2 LoRA eng_Latn->mar_Deva
+eval-indictrans2-20260924-095955,,eval,ai4bharat/indictrans2-en-indic-dist-200M,eval-indictrans2,,,,,,,,54.09922330813187,20.90857621335937,done,,,,,/kaggle/working/sessionB/adapter,"split_arg=test benchmarks=in22_gen,flores_devtest"

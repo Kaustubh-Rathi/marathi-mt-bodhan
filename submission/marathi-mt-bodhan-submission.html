@@ -1,0 +1,432 @@
+<html><head><meta charset='utf-8'><title>Marathi MT via Bodhan Fine-Tune - Submission</title><style>
+@page { size: A4; margin: 18mm 16mm; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10.2pt;
+       line-height: 1.5; color: #16202a; max-width: 900px; margin: 0 auto; }
+h1 { font-size: 20pt; color: #0b3d63; border-bottom: 2.5px solid #0b3d63;
+     padding-bottom: 5px; margin-top: 26px; page-break-after: avoid; }
+h2 { font-size: 14pt; color: #12507d; margin-top: 20px; page-break-after: avoid; }
+h3 { font-size: 11.5pt; color: #1c6ea4; margin-top: 15px; page-break-after: avoid; }
+h4 { font-size: 10.5pt; color: #33475b; margin-top: 12px; page-break-after: avoid; }
+code { background: #f2f5f8; padding: 1px 4px; border-radius: 3px;
+       font-family: Consolas, monospace; font-size: 9pt; }
+pre { background: #f6f8fa; border-left: 3px solid #0b3d63; padding: 9px 11px;
+      overflow-x: auto; font-size: 8.6pt; line-height: 1.35; page-break-inside: avoid; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 9pt;
+        page-break-inside: avoid; }
+th, td { border: 1px solid #c7d3de; padding: 5px 7px; text-align: left; }
+th { background: #eaf1f7; color: #0b3d63; font-weight: 600; }
+tr:nth-child(even) td { background: #fafcfd; }
+blockquote { border-left: 3px solid #ffb300; background: #fffbf0;
+             margin: 10px 0; padding: 7px 13px; color: #4a3b00; }
+a { color: #12507d; }
+.cover { text-align: center; padding: 28px 0 12px; page-break-after: always; }
+.cover h1 { border: none; font-size: 25pt; }
+.sub { color: #4a5b6b; font-size: 12pt; margin-bottom: 22px; }
+.links { margin: 18px auto; text-align: left; max-width: 640px; }
+.linkbox { border: 1px solid #c7d3de; border-left: 4px solid #0b3d63;
+           background: #f7fafc; padding: 9px 13px; margin: 9px 0; }
+.linkbox b { color: #0b3d63; }
+.ok { color: #1b7a3d; font-weight: 600; }
+</style></head><body>
+<div class='cover'><h1>Marathi Machine Translation via Bodhan Fine-Tune</h1><div class='sub'>AI4Bharat / AI Research Engineer take-home &mdash; English &rarr; Marathi (eng_Latn &rarr; mar_Deva)</div><div class='links'><div class='linkbox'><b>Source code (GitHub):</b><br><a href='https://github.com/Kaustubh-Rathi/marathi-mt-bodhan'>https://github.com/Kaustubh-Rathi/marathi-mt-bodhan</a></div><div class='linkbox'><b>Artifacts, checkpoints &amp; logs (Google Drive):</b><br><a href='https://drive.google.com/drive/folders/1Abt7fldMDl_4pjTa3ayDbLl1dqDZSUTD'>https://drive.google.com/drive/folders/1Abt7fldMDl_4pjTa3ayDbLl1dqDZSUTD</a></div><div class='linkbox'><b>Primary model:</b> bodhan-ai/indic-translate (Gemma-4 E4B, 8B) fine-tuned with QLoRA<br><b>Training data:</b> ai4bharat/samanantar (config <code>mr</code>)<br><b>Evaluation:</b> ai4bharat/IN22-Gen (test) + facebook/flores (devtest) &mdash; both held out, never trained on</div></div></div>
+<h1>Run results (live artifacts)</h1><p>All three sessions trained end-to-end on Kaggle T4s and every checkpoint was mirrored to Drive. The numbers below are read directly from <code>reports/</code>, which is synced from the runs themselves.</p><h2>Training runs</h2><table><thead><tr><th>Session</th><th>Method</th><th>Steps</th><th>Status</th><th>GPU</th></tr></thead><tbody><tr><td>A - Bodhan QLoRA (primary)</td><td>qlora</td><td>16</td><td class='ok'></td><td>-</td></tr><tr><td>B - IndicTrans2 LoRA</td><td>lora-seq2seq</td><td>16</td><td class='ok'></td><td>-</td></tr><tr><td>C - Ablation</td><td>qlora</td><td>16</td><td class='ok'></td><td>-</td></tr></tbody></table><h2>Evaluation (Session B, held-out, never trained on)</h2><table><thead><tr><th>Test set</th><th>BLEU</th><th>chrF2</th><th>chrF2++</th></tr></thead><tbody><tr><td>IN22-Gen (test, n=1024)</td><td>20.91</td><td>54.10</td><td>49.82</td></tr><tr><td>FLORES devtest (n=1012)</td><td>19.49</td><td>54.90</td><td>50.69</td></tr></tbody></table>
+<h1>APPROACH</h1><blockquote>The graded narrative: choices, rationale, gotchas &mdash; source: APPROACH.md</blockquote>
+<h2>APPROACH — Marathi MT via Bodhan Fine-Tune</h2>
+<blockquote><strong>Results status:</strong> runs pending. Every metrics/result slot is a marked <code>TODO(results)</code> placeholder to be filled after Kaggle sessions A/B/C complete. Nothing below invents numbers.</blockquote>
+<h3>1. Goal + constraints</h3>
+<ul><li><strong>Assignment:</strong> AI4Bharat / AI Research Engineer take-home. Pick <strong>one</strong> Bodhan model,</li></ul>
+<p>fine-tune on <strong>Marathi</strong>. Deliverables: <strong>GitHub repo, Google Drive artifacts, detailed docs.</strong></p>
+<ul><li><strong>Scored on:</strong> end-to-end run, code structure, effort/judgement/problem-solving.</li></ul>
+<p><strong>NOT scored on metrics.</strong> So this doc optimizes for reviewer-verifiable decisions, not SOTA claims.</p>
+<ul><li><strong>Hard constraints:</strong> Kaggle GPUs only (3 sessions/accounts × 30h/week, 12h per session);</li></ul>
+<p>gated HF assets; no budget for hosted tracking (no MLflow server, no W&amp;B paid tier); Bodhan 8B must fit on a T4/P100 via QLoRA.</p>
+<h3>2. Options considered / rejected</h3>
+<h4>2a. Base model: IndicTrans2-200M vs Bodhan 8B (<code>bodhan-ai/indic-translate</code>)</h4>
+<table><thead><tr><th>Option</th><th>Pros</th><th>Cons</th><th>Verdict</th></tr></thead><tbody><tr><td><code>ai4bharat/indictrans2-en-indic-dist-200M</code> (gated <code>auto</code>, 200M)</td><td>Trains anywhere incl. T4; mature IndicTransToolkit; native <code>eng_Latn</code> source matches the Samanantar en→mr train direction</td><td>Capacity ceiling on fluency; Samanantar WAS in IndicTrans2 pretraining (scores partly re-measure memorization); needs a one-time gated accept</td><td><strong>Session B</strong> — guarantees a complete end-to-end story whatever happens on A</td></tr><tr><td><code>bodhan-ai/indic-translate</code> (Gemma-4 E4B, 8B, gated)</td><td>Assignment-aligned (Bodhan pick); strongest Marathi prior; instruction-tuned chat template</td><td>8B needs 4-bit QLoRA + careful Gemma-4 handling; gated + share-alike license</td><td><strong>Primary (Session A)</strong> — where the effort goes</td></tr></tbody></table>
+<h4>2b. Fine-tune stack: Unsloth vs TRL+PEFT vs Axolotl</h4>
+<table><thead><tr><th>Option</th><th>Pros</th><th>Cons</th><th>Verdict</th></tr></thead><tbody><tr><td>Unsloth</td><td>Fastest kernels, low VRAM</td><td>Opaque patched kernels; Gemma-4 support lag; harder to attribute each hyperparameter</td><td><strong>Rejected</strong> — not used in any session (only a commented optional line in <code>requirements.txt</code>); Session C is a Bodhan QLoRA ablation (r 32/64→16/32, lr 1e-4→5e-5, seq 1024→512, steps 1000→600)</td></tr><tr><td><strong>TRL + PEFT (+ BitsAndBytes NF4)</strong></td><td>Transparent <code>SFTTrainer</code>/<code>LoraConfig</code>; public Arushhh recipe maps 1:1 onto it; auditable</td><td>Slower than Unsloth</td><td><strong>Chosen for Session A</strong></td></tr><tr><td>Axolotl</td><td>Great YAML-driven sweeps</td><td>Extra abstraction over failures we needed to see raw (ClippableLinear, mm columns)</td><td>Rejected — debugging surface too indirect for Gemma-4 gotchas</td></tr></tbody></table>
+<h4>2c. Tracking: MLflow vs W&amp;B vs TensorBoard + CSV</h4>
+<table><thead><tr><th>Option</th><th>Pros</th><th>Cons</th><th>Verdict</th></tr></thead><tbody><tr><td>MLflow server</td><td>Rich registry</td><td>Needs a hosted server we don't have; overkill for 3 runs</td><td><strong>Rejected</strong></td></tr><tr><td>W&amp;B</td><td>Nice dashboards</td><td>Account/egress friction across 3 Kaggle accounts; external dependency</td><td><strong>Rejected</strong></td></tr><tr><td><strong>TensorBoard + <code>reports/experiments.csv</code> + <code>metrics.json</code> + Drive sync</strong></td><td>Zero infra; per-run TB logs (<code>gdrive:mr-mt-edu-2026/&lt;run&gt;</code>); CSV is the human index</td><td>Manual figure assembly</td><td><strong>Chosen</strong></td></tr></tbody></table>
+<h4>2d. Compute: single vs multi-account Kaggle</h4>
+<ul><li>Single account = 30h/week, one failure kills the story.</li><li><strong>Chosen: 3 sessions/accounts</strong> — A = Bodhan 8B QLoRA (Acct1), B = IndicTrans2</li></ul>
+<p>en-indic-dist-200M (Acct2), C = ablation/demo (Acct3). Each keeps every checkpoint (every 100 steps) and syncs them to Drive, so a 12h session timeout costs at most one checkpoint interval. Ethical note: three genuine separate accounts used within stated quotas; no quota circumvention beyond documented limits.</p>
+<h3>3. Model choice + why</h3>
+<ul><li><strong>Primary: <code>bodhan-ai/indic-translate</code>.</strong> It is the assignment's Bodhan pick for Marathi,</li></ul>
+<p>Gemma-4 E4B 8B instruction-tuned for Indic translation. QLoRA (4-bit NF4, all-linear LoRA) is the only way 8B fits Kaggle GPUs, and the public Arushhh recipe gives a proven configuration to mirror rather than re-search under a 30h budget.</p>
+<ul><li><strong>Session B: <code>ai4bharat/indictrans2-en-indic-dist-200M</code> + IndicTransToolkit</strong></li></ul>
+<p>(<code>eng_Latn-&gt;mar_Deva</code>). Gated <code>auto</code> (one-time accept), 200M params, trains on any Kaggle GPU. Guarantees submittable artifacts + metrics even if Session A stalls on VRAM or gating.</p>
+<ul><li><strong>Attribution (license compliance):</strong> outputs derived from <code>indic-translate</code> carry</li></ul>
+<p>"Built with indic-translate from Bodhan AI / AI4Bharat" and Indic Open Model License v1.0 share-alike terms.</p>
+<h3>4. Dataset choice + not-in-training rationale + decontamination</h3>
+<ul><li>**Train: <code>ai4bharat/samanantar</code>, config <code>mr</code> (OPEN, English→Marathi,</li></ul>
+<p>CC-BY-NC-4.0), direction <code>eng_Latn-&gt;mar_Deva</code>.<strong> This is a pivot: the preferred set was <code>coild-aikosh/Education_v2</code> (education-domain HIN–MAR, CC-BY-4.0) — chosen because it was </strong>unlikely to have been in Bodhan/IndicTrans2 pretraining**, unlike BPCC/Samanantar which are near-certain pretraining ingredients — but COILD is manual-gated and access was denied, so it is NOT used. Honest caveat: Samanantar (via BPCC) WAS used in IndicTrans2 pretraining, so Session B scores partly re-measure memorization; Session A (Bodhan) is less affected.</p>
+<ul><li>**Eval (held out, NEVER trained on): <code>ai4bharat/IN22-Gen</code> (config null/</li></ul>
+<p><code>default</code>, split <code>test</code>) + <code>facebook/flores</code> (config <code>eng_Latn-mar_Deva</code>, split <code>devtest</code>), direction <code>eng_Latn-&gt;mar_Deva</code>.** General-domain benchmarks, disjoint from the Samanantar train slice — so gains must come from transfer, not leakage.</p>
+<ul><li><strong>Decontamination gates</strong> (full table in <code>reports/LEAKAGE_CHECKLIST.md</code>, L1..L10):</li></ul>
+<p>pair-hash blocklist of test sets vs train; exact + src-only near-dup filtering (threshold 0.9, see <code>configs/base.yaml</code> <code>prepare.near_dup_threshold</code>); length filters (1–100 words); date/domain provenance check; no test files inside train dirs; normalize-before-score. Eval-decoding config: 256 new tokens, beam 5.</p>
+<ul><li>Splits: <code>max_train</code> 8000 / <code>max_dev</code> 1000 (<code>configs/base.yaml</code>), seed 42, JSONL rows</li></ul>
+<p><code>{src, tgt, src_lang, tgt_lang, domain}</code> per <code>docs/SPEC.md</code>.</p>
+<h3>5. Training config + hyperparameter rationale</h3>
+<p>Primary (Session A) mirrors the <strong>public Arushhh QLoRA recipe</strong>; every deviation is called out. Values from <code>configs/base.yaml</code>:</p>
+<table><thead><tr><th>Hyperparameter</th><th>Value</th><th>Rationale (why this, why not something else)</th></tr></thead><tbody><tr><td>Quantization NF4 double-quant, <code>compute_dtype</code> bf16</td><td><code>load_in_4bit: true</code>, <code>quant_type: nf4</code></td><td>8B fits T4/P100; NF4 &gt; FP4 for instruction-tuned weights (Arushhh recipe)</td></tr><tr><td>LoRA r / alpha / dropout</td><td>32 / 64 / 0.05</td><td>Arushhh recipe verbatim: r=32 captures translation style shift; alpha=2r keeps scaling stable; 0.05 dropout regularizes 8k-sample run</td></tr><tr><td><code>target_modules: all-linear</code> + <code>exclude_modules</code> (vision/audio, <code>lm_head</code>)</td><td>see <code>base.yaml</code></td><td>Gemma-4 PEFT uses <code>ClippableLinear</code>; a bare <code>q_proj</code> list crashes — all-linear+exclude is mandatory (gotcha §6)</td></tr><tr><td><code>modules_to_save: [lm_head, embed_tokens]</code></td><td>—</td><td>Lets output embeddings track Marathi distribution without full finetune</td></tr><tr><td>LR 1e-4, <code>cosine_with_min_lr</code> (<code>min_lr_rate</code> 0.1), warmup 0.03</td><td>—</td><td>Arushhh recipe: 1e-4 is the QLoRA sweet spot (1e-5 underfits, 3e-4 diverges on 8k); min-LR floor avoids late collapse; 3% warmup covers scheduler init</td></tr><tr><td><code>max_seq_length</code> 1024, packing off, <code>assistant_only_loss</code></td><td>—</td><td>Education pairs fit 1024; packing off keeps src/tgt alignment auditable; loss on assistant span only</td></tr><tr><td>Batch 1 × accum 16 (eff. 16), <code>paged_adamw_8bit</code>, wd 0.01, clip 1.0</td><td>—</td><td>Single-GPU fit with stable effective batch; paged optimizer survives T4 spikes</td></tr><tr><td><code>max_steps</code> 1000, save/eval every 100, logging 10</td><td>—</td><td>All checkpoints kept (Drive-synced); fits 12h session with ≤100-step granularity</td></tr><tr><td>bf16 (+ P100 fallback note)</td><td><code>bf16: true</code></td><td>T4 bf16 OK; P100 lacks bf16/FA2 — use fp16 path (see <code>docs/SETUP.md</code>)</td></tr><tr><td>Gradient checkpointing on, <code>remove_unused_columns=False</code></td><td>—</td><td>VRAM fit + required so multimodal columns survive collation</td></tr><tr><td>Seed 42</td><td>—</td><td>Deterministic splits + shuffles</td></tr></tbody></table>
+<p>Fallback (Session B) deltas: <code>SEQ_2_SEQ_LM</code> LoRA on <code>q_proj,k_proj</code> only, <code>attn_implementation="eager"</code>, <code>num_workers=0</code> (Kaggle stability), same 100-step cadence.</p>
+<h3>6. Gemma-4 gotchas hit</h3>
+<ol><li><strong><code>transformers&gt;=5.5.2</code> required</strong> for KV-sharing + <code>mm_token_type_ids</code>. Older versions</li></ol>
+<p>silently misroute multimodal token types. Pinned <code>transformers==5.13.1</code> in <code>requirements.txt</code>; Session B uses a <strong>separate env</strong> (<code>transformers&gt;=4.33.2,&lt;5</code>) because IndicTransToolkit conflicts with v5.</p>
+<ol><li><strong>PEFT <code>ClippableLinear</code> needs all-linear + exclude — never a bare <code>q_proj</code> list.</strong></li></ol>
+<p>Bare lists crash adapter injection on Gemma-4. <code>configs/base.yaml</code> encodes the working form.</p>
+<ol><li><strong>No DeepSpeed ZeRO-3 for LoRA.</strong> ZeRO-3 shards the frozen base out from under PEFT;</li></ol>
+<p>single-GPU QLoRA needs none of it.</p>
+<ol><li><strong>vLLM has no runtime LoRA — merge first.</strong> Serve via <code>inference.py</code> on merged weights,</li></ol>
+<p>not a vLLM LoRA slot.</p>
+<ol><li><strong>"Loss drops but inference unchanged" → verify greedy + nonce overfit.</strong> Before trusting</li></ol>
+<p>a falling curve: greedy-decode a train sample, then overfit a nonce pair (e.g. a made-up proper noun) for a few steps — if the nonce doesn't stick, the loss is masking/output-shift, not learning. (Procedure in <code>docs/TRAINING.md</code>.)</p>
+<h3>7. Evaluation protocol</h3>
+<ul><li>Benchmarks: <code>in22_gen</code> + <code>flores_devtest</code> per <code>configs/base.yaml</code> (<code>eval.benchmarks</code>).</li><li>Decoding: <code>max_new_tokens</code> 256, <code>num_beams</code> 5, batch 8 via <code>mr_mt/evaluate.py</code>.</li><li>Metrics: sacreBLEU BLEU + chrF (<code>score()</code>), written to <code>metrics.json</code> with</li></ul>
+<p><code>&lt;split&gt;_preds.txt</code> / <code>.refs.txt</code> under <code>reports/predictions/</code>.</p>
+<ul><li>Normalize-before-score; test sets never enter <code>data/processed/train.jsonl</code></li></ul>
+<p>(gates L1..L10 in <code>reports/LEAKAGE_CHECKLIST.md</code>).</p>
+<blockquote>TODO(results): paste <code>metrics.json</code> summary (BLEU/chrF per benchmark × sessions A/B/C). TODO(results): add <code>reports/figures/metric_bars.png</code> + loss curves. TODO(results): qualitative table — 5 wins / 5 failures with src/ref/hyp.</blockquote>
+<h3>8. Challenges + fixes</h3>
+<table><thead><tr><th>#</th><th>Challenge</th><th>Fix</th></tr></thead><tbody><tr><td>1</td><td>8B doesn't fit Kaggle VRAM full-finetune</td><td>4-bit NF4 QLoRA, batch 1×16, grad checkpointing, seq 1024</td></tr><tr><td>2</td><td>Gemma-4 PEFT crash on targeted <code>q_proj</code> lists</td><td>all-linear + exclude list (recipe-mandated)</td></tr><tr><td>3</td><td><code>transformers</code> version split (A needs ≥5.5.2, B needs &lt;5)</td><td>Two envs; <code>requirements.txt</code> pins A/C, comments pin B</td></tr><tr><td>4</td><td>12h session timeouts</td><td>All checkpoints kept + Drive sync (live rclone / Hub optional); resume-from-checkpoint flow (<code>docs/TRAINING.md</code>)</td></tr><tr><td>5</td><td>P100 lacks bf16/FA2</td><td>fp16 fallback path; T4 preferred for Session A</td></tr><tr><td>6</td><td>Leakage risk (Samanantar IS BPCC-adjacent pretraining data)</td><td>Samanantar pivot (COILD denied) + L1..L10 checklist + normalize-before-score; Session B memorization caveat stated in §4</td></tr><tr><td>7</td><td>No hosted tracking</td><td>TensorBoard per session + <code>reports/experiments.csv</code> index + Drive sync</td></tr></tbody></table>
+<h3>9. Reproduce</h3>
+<pre><code>pip install -r requirements.txt   # Session A/C env (see docs/SETUP.md for Session B env)
+make data                         # Samanantar mr -&gt; data/processed/{train,dev,test}.jsonl
+make train-a                      # primary Bodhan 8B QLoRA (Session A)
+make eval                         # IN22-Gen + FLORES -&gt; reports/metrics.json
+make figures                      # loss / length-hist / metric bars -&gt; reports/figures/</code></pre>
+<p>Resume + multi-account + Drive pull flow: [docs/TRAINING.md](docs/TRAINING.md). Environment + gated access: [docs/SETUP.md](docs/SETUP.md).</p>
+<h3>10. What I'd do with more time</h3>
+<ol><li><strong>Ablation matrix (Session C extension):</strong> r ∈ {16, 32, 64} × LR ∈ {5e-5, 1e-4} on a fixed</li></ol>
+<p>2k subset; log to <code>reports/experiments.csv</code> — currently only single-point recipe mirror.</p>
+<ol><li><strong>Back-translation augmentation:</strong> Marathi monolingual → English pseudo-pairs, filtered by</li></ol>
+<p>round-trip chrF, to grow general-domain coverage without new parallel data.</p>
+<ol><li><strong>chrF++ + COMET:</strong> add learned metric alongside BLEU/chrF for morphologically rich Marathi.</li><li><strong>Merged-weight serving:</strong> merge LoRA → full checkpoint, quantize (GGUF/AWQ), latency/quality</li></ol>
+<p>report on a fixed 500-sentence general-domain slice.</p>
+<ol><li><strong>Error taxonomy:</strong> annotate 200 failures (agreement, postpositions, technical terms) to drive</li></ol>
+<p>the next data slice choice.</p>
+<h1>README</h1><blockquote>Overview, structure and how to reproduce &mdash; source: README.md</blockquote>
+<h2>Marathi MT via Bodhan Fine-Tune (English → Marathi)</h2>
+<p>AI4Bharat / AI Research Engineer take-home: pick <strong>one</strong> Bodhan model, fine-tune it for <strong>Marathi</strong>, and deliver an end-to-end run with clean code, honest docs, and reproducible artifacts.</p>
+<ul><li><strong>Primary:</strong> <a href="https://huggingface.co/bodhan-ai/indic-translate"><code>bodhan-ai/indic-translate</code></a></li></ul>
+<p>(Gemma-4 E4B, 8B, gated) fine-tuned with QLoRA.</p>
+<ul><li><strong>Session B:</strong> <a href="https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M"><code>ai4bharat/indictrans2-en-indic-dist-200M</code></a></li></ul>
+<p>(gated <code>auto</code>; accept once) + IndicTransToolkit, direction <code>eng_Latn → mar_Deva</code>.</p>
+<ul><li><strong>Train:</strong> <a href="https://huggingface.co/datasets/ai4bharat/samanantar"><code>ai4bharat/samanantar</code></a></li></ul>
+<p>config <code>mr</code> (OPEN, English→Marathi, CC-BY-NC-4.0).</p>
+<ul><li><strong>Eval (held out, never trained on):</strong> <a href="https://huggingface.co/datasets/ai4bharat/IN22-Gen"><code>ai4bharat/IN22-Gen</code></a></li></ul>
+<p>(config null/<code>default</code>, split test) + <a href="https://huggingface.co/datasets/facebook/flores"><code>facebook/flores</code></a> (config <code>eng_Latn-mar_Deva</code>, split devtest), direction <code>eng_Latn → mar_Deva</code>.</p>
+<blockquote><strong>Dataset pivot:</strong> the preferred not-in-training education-domain set (<code>coild-aikosh/Education_v2</code>) is manual-gated and access was denied, so training pivoted to the OPEN <code>samanantar</code> (<code>mr</code>) set. Note Samanantar (via BPCC) WAS used in IndicTrans2 pretraining, so Session B scores partly re-measure memorization.</blockquote>
+<blockquote><strong>Scoring note (per assignment brief):</strong> NOT scored on metrics; scored on end-to-end run, code structure, and effort/judgement/problem-solving. The graded narrative lives in [APPROACH.md](APPROACH.md).</blockquote>
+<h3>Repo tree</h3>
+<pre><code>marathi-mt-bodhan/
+├── README.md                  # this file
+├── APPROACH.md                # graded narrative (choices, config rationale, gotchas)
+├── Makefile                   # data / train-a,b,c / eval / figures / sync / clean
+├── .env.example               # env keys WITHOUT secrets (copy to .env, gitignored)
+├── configs/
+│   └── base.yaml              # shared config; session configs inherit + override
+├── src/mr_mt/                 # package root (import as `mr_mt`, PYTHONPATH=src)
+│   ├── config.py              # load_config / load_session_config (deep merge)
+│   ├── secrets.py             # get_hf_token (Kaggle Secret/Dataset/env/.env)
+│   ├── utils.py               # seeds, JSONL IO, experiments.csv append
+│   ├── checkpointing.py       # CheckpointMirrorCallback (background rclone mirror + pruning)
+│   ├── compat.py              # supported_kwargs: keyword/version compat for the two transformers stacks
+│   ├── data/                  # download.py, prepare.py, decontaminate.py
+│   ├── train_bodhan_qlora.py  # Session A (primary, 8B QLoRA)
+│   ├── train_indictrans2_lora.py  # Session B (en-indic-dist-200M LoRA)
+│   ├── evaluate.py            # IN22-Gen + FLORES scoring -&gt; metrics.json
+│   ├── inference.py           # single-string translate CLI
+│   ├── demo.py                # fixed-sentence demo + optional hosted-API comparison
+│   └── plots.py               # loss / length-hist / metric-bar figures
+├── scripts/
+│   ├── kaggle/                # Kaggle SCRIPT kernels (no notebooks): kaggle_env + kernel_*.py + metadata
+│   ├── run_train_sessionA.sh, run_train_sessionB.sh, run_data.sh, run_eval.sh
+│   ├── pull_kaggle_output.ps1 # Kaggle Output -&gt; local artifacts/
+│   └── sync_drive.ps1         # artifacts/ -&gt; gdrive:mr-mt-edu-2026/
+├── docs/
+│   ├── SPEC.md                # interface spec (function contracts, config schema)
+│   ├── SETUP.md               # HF login, Kaggle Dataset token, two envs, GPU notes
+│   ├── HYPERPARAMETERS.md     # every knob: why this value, when/how to shift
+│   └── TRAINING.md            # per-session runs, resume, monitoring, pull flow
+├── data/
+│   ├── raw/                   # gitignored (except .gitkeep)
+│   └── processed/             # train/dev/test.jsonl, gitignored (except .gitkeep)
+├── reports/
+│   ├── LEAKAGE_CHECKLIST.md   # L1..L10 decontamination checklist
+│   ├── experiments.csv        # run log (TensorBoard is primary; this is the index)
+│   ├── metrics.json           # eval output (TODO until runs complete)
+│   ├── figures/               # plots.py output
+│   └── predictions/           # &lt;split&gt;_preds.txt + .refs.txt
+├── models/                    # gitignored weights staging (adapters only in Hub/Drive)
+├── vendor/                    # NO-LICENSE local references only, gitignored, never committed
+└── requirements.txt           # Session A/C stack pinned; Session B installed separately</code></pre>
+<h3>Quickstart</h3>
+<pre><code>pip install -r requirements.txt
+make data
+make train-a</code></pre>
+<ul><li><code>make data</code> builds <code>data/processed/{train,dev,test}.jsonl</code> from <code>configs/base.yaml</code>.</li><li><code>make train-a</code> runs the primary Bodhan 8B QLoRA fine-tune (Session A).</li><li><code>make demo</code> prints Marathi translations for the built-in English sentence set</li></ul>
+<p>(adds a Bodhan hosted-API comparison when <code>BODHAN_API_KEY</code>/<code>BODHAN_API_URL</code> are set).</p>
+<ul><li>See [docs/SETUP.md](docs/SETUP.md) before anything gated, and</li></ul>
+<p>[docs/TRAINING.md](docs/TRAINING.md) for sessions B/C, resume, and monitoring.</p>
+<h3>Config (from <code>configs/base.yaml</code>)</h3>
+<table><thead><tr><th>Key</th><th>Value</th><th>Why (one line)</th></tr></thead><tbody><tr><td><code>model.name</code></td><td><code>bodhan-ai/indic-translate</code></td><td>Assignment pick: one Bodhan model for Marathi</td></tr><tr><td><code>lora.r / alpha / dropout</code></td><td>32 / 64 / 0.05</td><td>Mirror public Arushhh recipe (see APPROACH.md §5)</td></tr><tr><td><code>lora.target_modules</code></td><td><code>all-linear</code> + <code>exclude_modules</code> (vision/audio, <code>lm_head</code>)</td><td>Required for Gemma-4 PEFT <code>ClippableLinear</code></td></tr><tr><td><code>training.learning_rate</code></td><td>1e-4, <code>cosine_with_min_lr</code> (<code>min_lr_rate</code> 0.1)</td><td>Arushhh recipe; floor avoids late-training stall</td></tr><tr><td><code>training.max_seq_length</code></td><td>1024</td><td>Education sentences fit; keeps 8B QLoRA on T4/P100</td></tr><tr><td><code>training</code> batch</td><td>per-device 1 × accum 16</td><td>Effective batch 16 on a single Kaggle GPU</td></tr><tr><td><code>training.save_steps / eval_steps</code></td><td>100 / 100</td><td>Resume-friendly cadence for 12h Kaggle sessions</td></tr><tr><td><code>data.direction</code></td><td><code>eng_Latn-&gt;mar_Deva</code></td><td>English → Marathi</td></tr><tr><td><code>prepare.max_train / max_dev</code></td><td>8000 / 1000</td><td>Bounded run for 30h/week Kaggle budget</td></tr><tr><td><code>eval</code> decoding</td><td>256 new tokens, beam 5</td><td>IN22-Gen/FLORES scoring config</td></tr><tr><td><code>report_to</code></td><td><code>tensorboard</code></td><td>Deliberate: TB + CSV, no MLflow server / W&amp;B (see APPROACH.md §2)</td></tr></tbody></table>
+<p>Session configs (sessions A/B/C) inherit <code>base.yaml</code> via <code>mr_mt.config.load_session_config</code> and override only <code>run.name</code>, <code>output_dir</code>, model/lora blocks, and <code>hub.repo_id</code>.</p>
+<h3>Checkpoints (all of them, in full)</h3>
+<p>Training keeps <strong>all</strong> checkpoints (<code>save_total_limit: null</code>) with full optimizer state (<code>save_only_model: false</code>), and gets them off the ephemeral Kaggle VM:</p>
+<ol><li><strong>Live Drive mirror (active, background):</strong> each account has a private <code>gdrive-creds</code></li></ol>
+<p>Dataset (<code>rclone.conf</code>); <code>kaggle_env</code> installs rclone and points <code>RCLONE_CONFIG</code> at it, and <code>CheckpointMirrorCallback</code> rclones each checkpoint to <code>gdrive:mr-mt-edu-2026/&lt;run&gt;/checkpoints</code> <strong>in the background</strong> as it is saved (training never stalls; full checkpoints by default; <code>adapter_only_copy: true</code> for small adapter-only copies). Each verified upload gets a <code>_upload_complete</code> marker; local copies beyond the newest <code>checkpointing.keep_local</code> are pruned once uploaded, so <code>/kaggle/working</code> stays under quota. Resume after a 12h kill: set the Kaggle Secret <code>MR_MT_RESUME=auto</code> and re-push the kernel.</p>
+<ol><li><strong>Post-run Drive sync (fallback):</strong> <code>scripts/pull_kaggle_output.ps1</code> →</li></ol>
+<p><code>scripts/sync_drive.ps1</code> copies the whole run tree to <code>gdrive:mr-mt-edu-2026/&lt;run&gt;/</code>.</p>
+<ol><li><strong>HF Hub (optional, off by default):</strong> set <code>hub.push_to_hub: true</code> + a real</li></ol>
+<p><code>hub.repo_id</code> + a write-role token; <code>hub.strategy: all_checkpoints</code> then streams every checkpoint for cross-session resume.</p>
+<h3>Running on Kaggle (no notebooks)</h3>
+<p>Kaggle <code>kernel_type: script</code> entrypoints live in [<code>scripts/kaggle/</code>](scripts/kaggle/). <code>kaggle kernels push -p &lt;dir&gt;</code> requires a literal <code>kernel-metadata.json</code>, so push one kernel at a time with the helper (it stages the metadata and uses that task's account token):</p>
+<pre><code>powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task bodhan      # acct1 (primary)
+powershell -ExecutionPolicy Bypass -File scripts/kaggle/push_kernel.ps1 -Task indictrans2 # acct2 (fallback)</code></pre>
+<p>The token arrives via the attached private <code>hf-token</code> Dataset (or the <code>HF_TOKEN</code> Kaggle Secret) and the repo URL is set in <code>kaggle_env.py</code>; train kernels auto-install the pinned stack and auto-prepare <code>data/processed</code> when missing.</p>
+<p>See [scripts/kaggle/README.md](scripts/kaggle/README.md) for the full flow.</p>
+<h3>Model &amp; dataset links</h3>
+<table><thead><tr><th>Artifact</th><th>Link</th><th>License / access</th></tr></thead><tbody><tr><td>Primary model <code>bodhan-ai/indic-translate</code></td><td>https://huggingface.co/bodhan-ai/indic-translate</td><td>Gated; Indic Open Model License v1.0 (share-alike)</td></tr><tr><td>Base weights <code>google/gemma-4-E4B-it</code></td><td>https://huggingface.co/google/gemma-4-E4B-it</td><td>Gated (accept license)</td></tr><tr><td>Session B <code>ai4bharat/indictrans2-en-indic-dist-200M</code></td><td>https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M</td><td>Gated <code>auto</code> (one-time accept)</td></tr><tr><td>Train <code>ai4bharat/samanantar</code> (config <code>mr</code>, en→mr)</td><td>https://huggingface.co/datasets/ai4bharat/samanantar</td><td>OPEN; CC-BY-NC-4.0</td></tr><tr><td>Eval <code>ai4bharat/IN22-Gen</code> (config null, split test)</td><td>https://huggingface.co/datasets/ai4bharat/IN22-Gen</td><td>Accept license</td></tr><tr><td>Eval <code>facebook/flores</code> (config <code>eng_Latn-mar_Deva</code>, split devtest)</td><td>https://huggingface.co/datasets/facebook/flores</td><td>Already accessible (accept conditions if prompted)</td></tr><tr><td>Session artifacts (Drive)</td><td><code>gdrive:mr-mt-edu-2026/{bodhan-qlora,indictrans2-lora,eval}</code> — share URL: &lt;!-- TODO: paste Drive link after runs --&gt;</td><td>All checkpoints + <code>metrics.json</code></td></tr></tbody></table>
+<h3>License / attribution</h3>
+<ul><li>Code in this repo: &lt;!-- TODO: confirm repo license (e.g. MIT) --&gt;.</li><li><code>bodhan-ai/indic-translate</code> is under the <strong>Indic Open Model License v1.0</strong> (share-alike):</li></ul>
+<p>derivatives must carry the same license terms and the attribution <strong>"Built with indic-translate from Bodhan AI / AI4Bharat"</strong>.</p>
+<ul><li><code>vendor/</code> holds no-license third-party references for local reading only —</li></ul>
+<p><strong>gitignored, never committed</strong> (see <code>.gitignore</code>).</p>
+<h3>Further reading</h3>
+<ul><li>[APPROACH.md](APPROACH.md) — the full graded narrative + results TODOs.</li><li>[docs/SETUP.md](docs/SETUP.md) — environment, gated access, Kaggle secrets.</li><li>[docs/HYPERPARAMETERS.md](docs/HYPERPARAMETERS.md) — hyperparameter rationale + shift table.</li><li>[docs/TRAINING.md](docs/TRAINING.md) — running/resuming sessions, Drive pull flow.</li><li>[docs/SPEC.md](docs/SPEC.md) — module/function contracts for contributors.</li><li>[reports/LEAKAGE_CHECKLIST.md](reports/LEAKAGE_CHECKLIST.md) — decontamination gates.</li></ul>
+<h1>HYPERPARAMETERS</h1><blockquote>Every hyperparameter and why &mdash; source: docs/HYPERPARAMETERS.md</blockquote>
+<h2>HYPERPARAMETERS — what we run, why, and when to change it</h2>
+<p><strong>Single source of truth: <code>configs/</code>.</strong> <code>base.yaml</code> holds every training/eval knob; <code>session{A,B,C}_*.yaml</code> override only what differs. Python code contains only safe fallbacks (<code>dict.get</code> defaults) — if a value matters, it lives in YAML. To change anything below, edit the YAML, never the code.</p>
+<h3>Session A — Bodhan Gemma-4 (8B) QLoRA (primary)</h3>
+<p>Provenance: the combination is mirrored from a recipe already proven on <strong>this exact model + dependency stack</strong> (transformers 5.13.1 / trl 1.6.0 / peft 0.20.0 on a Kaggle T4; 8/10 runs converged, COMET ≈ 74.5 reference). We change only what the assignment forces (Marathi target, Samanantar en→mr data — the preferred education-domain set, <code>coild-aikosh/Education_v2</code>, was manual-gated and access was denied).</p>
+<table><thead><tr><th>Knob (config path)</th><th>Value</th><th>Why this value</th><th>When/how to shift</th></tr></thead><tbody><tr><td><code>model.load_in_4bit</code> + <code>bnb.quant_type: nf4</code> + <code>double_quant: true</code></td><td>on</td><td>8B on a 16GB T4 is impossible in fp16 (16GB weights alone). NF4+double-quant is the standard QLoRA recipe (Dettmers et al., 2023) — ~5GB weights leaves room for activations+optimizer.</td><td>No alternative on T4.</td></tr><tr><td><code>bnb.compute_dtype: bfloat16</code></td><td>bf16</td><td>bf16 has fp32-range exponent → no overflow NaNs (unlike fp16).</td><td>T4 (sm_75) has no native bf16: on NaN/bnb dtype errors flip the documented fp16 path (<code>training.bf16:false</code>, <code>fp16:true</code>, <code>compute_dtype: float16</code>) — see SETUP.md §4.</td></tr><tr><td><code>lora.r: 32</code>, <code>lora.alpha: 64</code></td><td>32/64</td><td>alpha/r = 2 keeps the proven effective adapter LR; r=32 is the sweet spot for domain-adapting an 8B on ~8k pairs (r=16 underfits slightly, r=64 gains nothing at this data size and costs VRAM). Proven values.</td><td>Session C ablates r=16/alpha=32. Raise r only if dev loss plateaus far above train loss AND more data is available.</td></tr><tr><td><code>lora.target_modules: all-linear</code> + <code>exclude_modules</code> (vision/audio)</td><td>all text linears</td><td>Attention-only LoRA underperforms all-linear for MT style transfer; vision/audio towers are excluded (text-only task) — saves memory, protects encoders.</td><td>Fixed.</td></tr><tr><td><code>lora.modules_to_save: [lm_head]</code></td><td>lm_head</td><td>Devanagari target distribution shift; training the head lets Marathi token logits adapt. (<code>embed_tokens</code> is listed in base.yaml but deliberately stripped in code — Gemma ties input/output embeddings.)</td><td>Fixed.</td></tr><tr><td><code>lora.dropout: 0.05</code></td><td>0.05</td><td>Light regularization for 8k rows.</td><td>Raise to 0.1 if dev loss diverges from train.</td></tr><tr><td><code>training.learning_rate: 1e-4</code></td><td>1e-4</td><td>Proven on this stack; QLoRA typical band is 1e-4–2e-4.</td><td>NaN/spikes → 5e-5. Plateaued high loss → 2e-4.</td></tr><tr><td><code>lr_scheduler_type: cosine_with_min_lr</code> + <code>min_lr_rate: 0.1</code></td><td>cosine, 10% floor</td><td>Smooth decay for convergence without killing tail-end learning; proven.</td><td>Fixed.</td></tr><tr><td><code>warmup_ratio: 0.03</code></td><td>3% (30 steps)</td><td>Standard short-run warmup; stabilizes 8-bit Adam without burning budget. transformers 5.x folded this into <code>warmup_steps</code> (float in <code>[0, 1)</code> = ratio) and deprecates <code>warmup_ratio</code>, so Session A forwards the ratio through <code>warmup_steps</code> (<code>_warmup_value</code>).</td><td>Fixed.</td></tr><tr><td><code>max_seq_length: 1024</code></td><td>1024</td><td>Rows are ≤100 words (prepare filters), so 1024 covers p99 + template overhead; attention cost grows steeply with length on T4.</td><td>OOM → 768 (near-zero truncation at the 100-word cap).</td></tr><tr><td><code>per_device_train_batch_size: 1</code> × <code>gradient_accumulation_steps: 16</code></td><td>eff. 16</td><td>VRAM-bound at 8B/4-bit/seq-1024; eff 16 gives stable gradients.</td><td>VRAM headroom &gt;2GB → bs=4/accum=4 (same eff 16), ~10-20% faster steps. Only after smoke test.</td></tr><tr><td><code>max_steps: 1000</code> (= 2 epochs of 8k)</td><td>1000</td><td>1000 × 16 = 16k samples = 2 epochs — proven; a 3rd epoch overfits 8k rows.</td><td>Deadline pressure → 600-800 (checkpoints every 100, stop anywhere).</td></tr><tr><td><code>save_steps/eval_steps: 100</code>, <code>logging_steps: 10</code></td><td>100/100/10</td><td>A 12h Kaggle kill must cost ≤ 1 save interval; eval-at-save gives the selection curve free.</td><td>Do NOT raise save_steps (TRAINING.md).</td></tr><tr><td><code>optim: paged_adamw_8bit</code></td><td>paged 8-bit</td><td>QLoRA-standard: pages states to CPU on VRAM spikes, 8-bit halves optimizer memory.</td><td>Fixed.</td></tr><tr><td><code>gradient_checkpointing: true</code>, <code>use_cache: false</code></td><td>on</td><td>Required to fit; ~30% step slowdown is the price.</td><td>Fixed on T4.</td></tr><tr><td><code>packing: false</code></td><td>off</td><td>TRL 1.6 packing is incompatible with <code>assistant_only_loss</code>; losing assistant masking hurts more than packing helps at seq 1024 with short rows.</td><td>Fixed.</td></tr><tr><td><code>assistant_only_loss: true</code></td><td>on</td><td>Loss on Marathi answer tokens only — the prompt is an instruction; training on it wastes capacity and teaches prompt-echoing. Needs <code>{% generation %}</code> template markers (fallback documented in <code>_load_chat_dataset</code>).</td><td>Fixed.</td></tr><tr><td><code>weight_decay: 0.01</code>, <code>max_grad_norm: 1.0</code>, <code>seed: 42</code></td><td>defaults</td><td>HF-standard, proven; shared seed for cross-session comparability.</td><td>Fixed.</td></tr></tbody></table>
+<h3>Session B — IndicTrans2 en-indic-dist-200M LoRA</h3>
+<table><thead><tr><th>Knob</th><th>Value</th><th>Why</th></tr></thead><tbody><tr><td><code>model.name</code></td><td>indictrans2-en-indic-dist-200M</td><td>En-Indic distilled checkpoint (200M): native English source → Marathi, matching the <code>eng_Latn-&gt;mar_Deva</code> Samanantar train direction. Gated <code>auto</code> — one-time accept.</td></tr><tr><td><code>lora.r:16/alpha:32/dropout:0.1</code>, targets <code>q_proj,k_proj</code></td><td>small</td><td>200M seq2seq needs far less adapter capacity than 8B; q/k-only mirrors known-good IndicTrans2 LoRA fine-tunes; heavier dropout suits the small model.</td></tr><tr><td><code>learning_rate: 2e-4</code>, <code>inverse_sqrt</code>, <code>warmup_steps: 1000</code></td><td>—</td><td>inverse_sqrt+warmup is the classic Noam-style NMT schedule; 2e-4 suits LoRA on a 200M. Session B config sets <code>warmup_steps: 1000</code> and <code>warmup_ratio: 0</code> (explicit step warmup, not the base 0.03 ratio).</td></tr><tr><td><code>max_seq_length: 256</code></td><td>256</td><td>Sentence-level MT; IndicTrans2 convention.</td></tr><tr><td><code>per_device 8 × accum 16</code> (eff 128)</td><td>128</td><td>Standard NMT token-batch equivalent for stable seq2seq gradients.</td></tr><tr><td><code>max_steps: 3000</code>, save/eval 500</td><td>—</td><td>3000 × 128 ≈ 48 passes over 8k — small model, needs many epochs; small checkpoints, so 500-step cadence is cheap.</td></tr><tr><td><code>fp16: true</code>, eager attention, <code>dataloader_num_workers: 0</code></td><td>—</td><td>Documented stability guards for the IndicTrans2 random-segfault issue (upstream #117); do not "optimize" these away.</td></tr><tr><td><code>predict_with_generate: false</code></td><td>off</td><td>Beam-5 generation every 500 steps over ~1000 dev rows wastes 20-50 min/run; loss-only eval suffices for model selection. Real BLEU/chrF++ come from <code>mr_mt.evaluate</code>.</td></tr></tbody></table>
+<h3>Eval (both families) — <code>eval:</code> in base.yaml</h3>
+<table><thead><tr><th>Knob</th><th>Value</th><th>Why</th></tr></thead><tbody><tr><td><code>num_beams: 5</code></td><td>5</td><td>MT-benchmark standard; comparable to published IN22/FLORES numbers.</td></tr><tr><td><code>max_new_tokens: 256</code></td><td>256</td><td>Matches the 100-word row cap with margin.</td></tr><tr><td><code>batch_size: 8</code></td><td>8</td><td>T4 4-bit decode sweet spot; sources are length-sorted before batching (less padding, ~15-30% faster).</td></tr><tr><td>metrics</td><td>sacrebleu BLEU + chrF++ (<code>word_order=2</code>)</td><td>chrF++ is robust for morphologically rich Marathi; BLEU for comparability; signatures printed for reproducibility.</td></tr></tbody></table>
+<h3>Quick shift table (if the smoke test / run says X)</h3>
+<table><thead><tr><th>Symptom</th><th>Change (YAML only)</th></tr></thead><tbody><tr><td>OOM at step 1</td><td><code>max_seq_length: 768</code> (bs stays 1)</td></tr><tr><td>NaN/inf loss on T4</td><td>fp16 path per SETUP.md §4; if persists, <code>learning_rate: 5e-5</code></td></tr><tr><td>Train loss flat, dev flat-high</td><td><code>learning_rate: 2e-4</code> OR <code>max_steps: 1500</code> — pick one</td></tr><tr><td>Dev loss rising while train falls</td><td><code>lora.dropout: 0.1</code>; pick an earlier checkpoint (saved every 100)</td></tr><tr><td>Not enough time</td><td><code>max_steps: 600</code>, evaluate checkpoint-600 — do not touch LR</td></tr><tr><td>VRAM headroom &gt;2GB</td><td><code>per_device_train_batch_size: 4</code>, <code>gradient_accumulation_steps: 4</code> (same eff. 16) for ~10-20% faster steps</td></tr></tbody></table>
+<h1>SPEC</h1><blockquote>Interface spec &mdash; source: docs/SPEC.md</blockquote>
+<h2>INTERFACE SPEC — marathi-mt-bodhan</h2>
+<p>All code targets Python 3.11 (Kaggle). Package root: <code>src/mr_mt</code> imported as <code>mr_mt</code> (add <code>src</code> to PYTHONPATH; configs reference <code>src</code> not used at runtime directly).</p>
+<h3>Conventions</h3>
+<ul><li>Config = YAML loaded by <code>mr_mt.config.load_config(path) -&gt; dict</code>.</li><li>Dataset rows (JSONL): <code>{"src": str, "tgt": str, "src_lang": str, "tgt_lang": str, "domain": str}</code>.</li></ul>
+<p><code>src_lang</code>/<code>tgt_lang</code> use FLORES codes (e.g. <code>hin_Deva</code>, <code>mar_Deva</code>, <code>eng_Latn</code>).</p>
+<ul><li>Processed files: <code>data/processed/train.jsonl</code>, <code>dev.jsonl</code>, <code>test.jsonl</code>.</li><li>Entry points run as modules: <code>python -m mr_mt.&lt;script&gt; --config &lt;yaml&gt; [args]</code>.</li><li>Secrets: read <code>HF_TOKEN</code> from env first, else from a gitignored <code>.env</code> at repo root.</li></ul>
+<p>Never hardcode tokens. Use <code>mr_mt.secrets.get_hf_token()</code>.</p>
+<ul><li>Outputs: training writes to <code>output_dir</code> from config; adapters under <code>&lt;output_dir&gt;/adapter</code>.</li><li>All scripts must be importable without side effects (<code>if __name__ == "__main__":</code>).</li></ul>
+<h3>Modules and required public functions</h3>
+<h4>mr_mt/secrets.py</h4>
+<ul><li><code>get_hf_token() -&gt; Optional[str]</code>  # env -&gt; Kaggle Secret -&gt; hf-token Dataset -&gt; .env</li><li><code>get_env_secret(name) -&gt; Optional[str]</code>  # env -&gt; .env, for non-HF knobs (e.g. BODHAN_API_KEY)</li><li><code>iter_hf_tokens() -&gt; Iterator[Tuple[str, str]]</code>  # (source label, token) candidates, deduped</li><li><code>hf_token_can_access(token, repo_type, repo_id) -&gt; Optional[bool]</code>  # True/False(401|403)/None(undecidable)</li><li><code>select_hf_token(required=(), timeout=20) -&gt; Tuple[Optional[str], str]</code>  # first candidate that</li></ul>
+<p>can read every <code>(repo_type, repo_id)</code> in <code>required</code>; falls back to the first with a warning</p>
+<h4>mr_mt/utils.py</h4>
+<ul><li><code>set_seed(seed: int) -&gt; None</code></li><li><code>ensure_dir(p) -&gt; str</code></li><li><code>read_jsonl(path) -&gt; List[dict]</code></li><li><code>write_jsonl(rows, path) -&gt; None</code></li><li><code>log_experiment(row: dict, path: str) -&gt; None</code>  # append CSV, create header if missing</li><li><code>EXPERIMENT_COLUMNS: List[str]</code></li></ul>
+<h4>mr_mt/config.py</h4>
+<ul><li><code>load_config(path) -&gt; dict</code></li><li><code>resolve(base_cfg: dict, overrides: Optional[dict]) -&gt; dict</code>  # deep merge</li></ul>
+<h4>mr_mt/data/download.py</h4>
+<ul><li><code>download_dataset(cfg: dict) -&gt; str</code>  # snapshot_download / load_dataset; returns local dir</li><li><code>download_benchmarks(cfg: dict) -&gt; Dict[str, str]</code>  # eval sets</li></ul>
+<h4>mr_mt/data/prepare.py</h4>
+<ul><li><code>build_splits(cfg: dict) -&gt; dict</code>  # reads raw dir, writes train/dev/test jsonl; returns counts</li><li>CLI <code>main()</code> with <code>--config</code>.</li></ul>
+<h4>mr_mt/data/decontaminate.py</h4>
+<ul><li><code>normalize(text, lang) -&gt; str</code></li><li><code>pair_hash(src, tgt) -&gt; str</code></li><li><code>dedup_against(rows, blocklist_hashes) -&gt; Tuple[List[dict], int]</code></li><li><code>near_dup_filter(rows, refs, threshold) -&gt; Tuple[List[dict], int]</code></li></ul>
+<h4>mr_mt/train_bodhan_qlora.py   (Session A primary)</h4>
+<ul><li><code>build_prompt(sample, cfg) -&gt; str</code>  # chat-template-ready text</li><li><code>load_model_and_tokenizer(cfg) -&gt; Tuple[model, tokenizer, processor]</code></li><li><code>build_lora(cfg) -&gt; peft.LoraConfig</code></li><li><code>main()</code> -&gt; SFTTrainer, save adapter to <code>&lt;output_dir&gt;/adapter</code>, optional hub push.</li><li>Must: 4-bit NF4 via BitsAndBytesConfig; <code>target_modules="all-linear"</code> with</li></ul>
+<p><code>exclude_modules</code>; <code>max_length=max_seq_length</code>; <code>remove_unused_columns=False</code> for mm; gradient_checkpointing when configured; <code>neftune_noise_alpha</code> optional.</p>
+<h4>mr_mt/train_indictrans2_lora.py   (Session B fallback)</h4>
+<ul><li><code>load_processor_and_model(cfg)</code> using <code>IndicTransToolkit.IndicProcessor</code> +</li></ul>
+<p><code>AutoModelForSeq2SeqLM(trust_remote_code=True)</code>.</p>
+<ul><li><code>build_lora(cfg)</code> -&gt; LoraConfig(task_type=SEQ_2_SEQ_LM, target q_proj,k_proj).</li><li><code>main()</code> -&gt; Seq2SeqTrainer; num_workers=0; attn_implementation="eager"; adapter to <code>&lt;out&gt;/adapter</code>.</li></ul>
+<h4>mr_mt/evaluate.py</h4>
+<ul><li><code>translate_batch(model, tokenizer/processor, samples, cfg) -&gt; List[str]</code></li><li><code>score(preds, refs, tgt_lang) -&gt; dict</code>  # {"bleu":..,"chrf":..}, sacrebleu</li><li><code>main()</code> -&gt; writes <code>metrics.json</code> and <code>&lt;split&gt;_preds.txt</code> + <code>.refs.txt</code> under reports/predictions.</li><li>Benchmarks configured as list of {dataset, config, split, src_lang, tgt_lang}.</li></ul>
+<h4>mr_mt/inference.py</h4>
+<ul><li><code>translate(text, model, tokenizer, cfg, family="bodhan") -&gt; str</code></li><li>CLI <code>--config --adapter --text --family</code>.</li></ul>
+<h4>mr_mt/demo.py</h4>
+<ul><li><code>DEMO_SENTENCES: List[str]</code> — fixed Hindi demo set.</li><li><code>hosted_translate(sentence, api_url, api_key, ...) -&gt; Optional[str]</code> — best-effort</li></ul>
+<p>Bodhan hosted-API call (returns <code>None</code> on failure; never raises).</p>
+<ul><li>CLI <code>--config --adapter --family [--sentences ...]</code> — prints HI/MR pairs and, when</li></ul>
+<p><code>BODHAN_API_KEY</code>/<code>BODHAN_API_URL</code> resolve (env → <code>.env</code>), the hosted output too.</p>
+<h4>mr_mt/plots.py</h4>
+<ul><li><code>plot_loss(trainer_state_or_csv, out_png)</code></li><li><code>plot_length_hist(rows, out_png)</code></li><li><code>plot_metric_bars(metrics: dict, out_png)</code></li></ul>
+<h4>mr_mt/compat.py</h4>
+<ul><li><code>supported_kwargs(target, kwargs, aliases=None) -&gt; Tuple[dict, List[str]]</code> —</li></ul>
+<p>renames/filters kwargs against the *installed* signature of <code>target</code> (class or callable) and returns <code>(kept, dropped)</code>. Callers log the dropped names loudly.</p>
+<ul><li><code>ALIASES</code> maps renamed keywords: <code>evaluation_strategy -&gt; eval_strategy</code></li></ul>
+<p>(transformers &gt;= 4.46), <code>tokenizer -&gt; processing_class</code>, and <code>generation_max_length -&gt; generation_max_new_tokens</code> for forward compatibility.</p>
+<ul><li>Rationale: Session B's pin (<code>&gt;=4.33.2,&lt;5</code>) spans the rename point, where the old</li></ul>
+<p>names were <strong>removed, not aliased</strong>; Session A pins 5.13.1 where <code>warmup_ratio</code> is deprecated in favour of <code>warmup_steps</code> (float in <code>[0, 1)</code> = ratio).</p>
+<h4>mr_mt/checkpointing.py</h4>
+<ul><li>`CheckpointMirrorCallback(mirror_dir, adapter_only_copy, rclone_remote,</li></ul>
+<p>rclone_binary, keep_local, max_pending)<code> — TrainerCallback. </code>on_save<code>: with </code>adapter_only_copy: true<code> it writes an adapter-only copy of each </code>checkpoint-&lt;step&gt;<code> under </code>mirror_dir<code> (NOT resumable) and background-rclones it; with </code>false<code> (default) it background-rclones the full checkpoint dir directly. Uploads are </code>subprocess.Popen<code> (never block training), reaped on the next save, all awaited at </code>on_train_end<code>; a </code>_upload_complete<code> marker is touched per verified upload; confirmed checkpoints beyond the newest </code>keep_local` are pruned locally. Best-effort: failures never abort training, but a configured remote with a missing rclone binary prints a loud warning.</p>
+<ul><li><code>build_mirror_callback(cfg) -&gt; CheckpointMirrorCallback</code> from <code>cfg["checkpointing"]</code>.</li></ul>
+<h4>scripts/kaggle/ (Kaggle script kernels, not notebooks)</h4>
+<ul><li><code>kaggle_env.activate(stack) -&gt; repo_dir</code> — locate/clone repo, add <code>src</code> +</li></ul>
+<p><code>scripts/kaggle</code> to path, chdir, export HF token, optional pip install (<code>MR_MT_INSTALL=1</code>) and rclone config.</p>
+<ul><li><code>kaggle_env.get_setting(name, default="")</code> — env var, then Kaggle Secret.</li><li><code>kaggle_env.verify_hf_access(stack) -&gt; {"token","source","results"}</code> — probes the</li></ul>
+<p>stack's gated repos and returns per-repo <code>True</code>/<code>False</code>(401|403)/<code>None</code>; <code>activate()</code> runs it *before* the pip install, prints an <code>ACTION REQUIRED</code> block, and raises <code>SystemExit</code> (fail-fast) when a repo is definitively blocked or no token candidate exists. <code>None</code> (unknown) never aborts; <code>MR_MT_TOKEN_PROBE=0</code> skips probe + abort.</p>
+<ul><li><code>python scripts/kaggle/kaggle_env.py --check-access &lt;stack&gt;</code> — the same probe as a</li></ul>
+<p>local pre-flight CLI (exit 1 when a repo is definitively blocked).</p>
+<ul><li><code>kaggle_env.latest_confirmed_checkpoint(remote) -&gt; Optional[str]</code> — highest</li></ul>
+<p><code>checkpoint-&lt;N&gt;</code> under a Drive remote that has the <code>_upload_complete</code> marker.</p>
+<ul><li><code>kaggle_env.rclone_fetch(remote_dir, local_dir, includes=None) -&gt; bool</code>.</li><li><code>kernel_prepare_data.py</code>, <code>kernel_train_bodhan.py</code>, <code>kernel_train_ablation.py</code>,</li></ul>
+<p><code>kernel_train_indictrans2.py</code>, <code>kernel_evaluate.py</code>, <code>kernel_probe_token.py</code> — thin entrypoints; the train kernels auto-run download+prepare if <code>data/processed</code> is missing and honour <code>MR_MT_RESUME=auto</code>; every <code>checkpoint-&lt;step&gt;</code> is auto-uploaded to Drive in the background with a <code>_upload_complete</code> marker; the Bodhan train kernels (Session A/C) run in-kernel post-train eval on the just-saved local adapter (never fails training); the eval kernel auto-fetches adapter files only from the latest confirmed Drive checkpoint when <code>MR_MT_ADAPTER</code> is unset; the probe kernel (tasks <code>probe</code>/<code>probe2</code>/<code>probe3</code>, CPU-only) lists every HF token candidate an account can see with <code>whoami</code> + gated-repo verdicts. <code>kernel-metadata.*.json</code> set <code>kernel_type: script</code>, GPU, internet, and the private <code>hf-token</code> / <code>gdrive-creds</code> datasets.</p>
+<h3>Config schema (configs/base.yaml)</h3>
+<p>See <code>configs/base.yaml</code>. Session configs inherit and override.</p>
+<h1>SETUP</h1><blockquote>Environment setup &mdash; source: docs/SETUP.md</blockquote>
+<h2>SETUP</h2>
+<h3>1. Hugging Face login + gated licenses to accept</h3>
+<p>All tokens via <code>HF_TOKEN</code> (env first, else gitignored <code>.env</code> at repo root — <code>mr_mt.secrets.get_hf_token()</code>). <strong>Never commit tokens</strong>; <code>.env</code> is gitignored.</p>
+<ol><li>Create a token at https://huggingface.co/settings/tokens (read role is enough to</li></ol>
+<p>download; write role only if pushing checkpoints to the Hub).</p>
+<ol><li>One-time gated acceptances (while logged in with the <code>HF_TOKEN</code> account):</li><li><code>ai4bharat/samanantar</code> (train, config <code>mr</code>) — OPEN, no acceptance needed.</li><li><code>ai4bharat/IN22-Gen</code> — https://huggingface.co/datasets/ai4bharat/IN22-Gen (accept license)</li><li><code>facebook/flores</code> — https://huggingface.co/datasets/facebook/flores (already accessible; accept conditions if prompted)</li><li><code>bodhan-ai/indic-translate</code> — https://huggingface.co/bodhan-ai/indic-translate</li><li><code>google/gemma-4-E4B-it</code> — https://huggingface.co/google/gemma-4-E4B-it</li><li><code>ai4bharat/indictrans2-en-indic-dist-200M</code> — https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M (gated <code>auto</code>; Session B — accept its conditions once)</li><li>Rejected: <code>coild-aikosh/Education_v2</code> was the preferred not-in-training</li></ol>
+<p>education set, but it is manual-gated and access was denied — NOT used.</p>
+<ol><li>Local login:</li></ol>
+<pre><code>   copy .env.example .env
+   :: edit .env, set HF_TOKEN=&lt;your_token_here&gt;</code></pre>
+<p>Or export <code>HF_TOKEN</code> in the environment (takes precedence over <code>.env</code>).</p>
+<h3>2. Kaggle token + code delivery (script kernels)</h3>
+<p>We run Kaggle <strong>script kernels</strong> (<code>kernel_type: script</code>), not notebooks. Kaggle Secrets are <strong>user-level</strong> — created once per account (web UI → Settings/Add-ons → Secrets) they are readable from every kernel of that account, including pushed script kernels, via <code>UserSecretsClient</code>:</p>
+<ol><li><strong>Preferred:</strong> create a Secret named <code>HF_TOKEN</code> on each of the three</li></ol>
+<p>accounts. (kernel-metadata.json has no secrets field and the CLI has no secrets flag — kaggle-api#582 is an *enhancement* request for CLI-side management, NOT a limitation on reading secrets from kernels.)</p>
+<ol><li><strong>Fallback (already wired):</strong> a private Kaggle Dataset containing a single</li></ol>
+<p><code>hf_token.txt</code>, attached in each <code>scripts/kaggle/kernel-metadata.*.json</code> under <code>dataset_sources</code> (e.g. <code>kaustubhcrathi/hf-token</code>; per-account list in <code>scripts/kaggle/README.md</code>).</p>
+<ol><li><code>mr_mt.secrets.get_hf_token()</code> resolves the token in this order: <code>HF_TOKEN</code> env →</li></ol>
+<p>Kaggle Secret → <code>/kaggle/input/**/hf_token.txt</code> → gitignored <code>.env</code>. It is exported as <code>HF_TOKEN</code>/<code>HUGGING_FACE_HUB_TOKEN</code> in <code>scripts/kaggle/kaggle_env.py</code>. Optional run knobs (<code>MR_MT_RESUME</code>, <code>MR_MT_ADAPTER</code>, <code>MR_MT_FAMILY</code>) likewise read env → Secret (<code>kaggle_env.get_setting</code>).</p>
+<p>Code delivery: <code>kaggle_env.py</code> locates the repo at <code>MR_MT_REPO_DIR</code> (default <code>/kaggle/working/marathi-mt-bodhan</code>) and <code>git clone</code>s it from <code>MR_MT_REPO_URL</code> if missing. <strong>Never put <code>.env</code> or the token in the repo.</strong></p>
+<p><strong>Live Drive mirror (wired):</strong> each account has a private <code>gdrive-creds</code> Dataset containing <code>rclone.conf</code>; <code>kaggle_env._configure_rclone()</code> points <code>RCLONE_CONFIG</code> at it and installs the static rclone binary to <code>/kaggle/working/bin</code> if absent. The session configs set <code>checkpointing.rclone_remote</code>, so every checkpoint is rcloned to Drive during training (see [TRAINING.md](TRAINING.md)).</p>
+<p><strong>Local Drive sync (one-time, per machine).</strong> The <code>gdrive:</code> remote lives in your rclone profile (<code>%APPDATA%\rclone\rclone.conf</code>), never in the repo. On a new machine: <code>rclone config</code> → new remote named <code>gdrive</code> → storage <code>drive</code> → client_id/secret blank → scope <code>drive.file</code> → auto config <strong>yes</strong> → browser login, then <code>rclone lsd gdrive:</code> to verify. Staging is the gitignored <code>artifacts/</code> inside the repo: pull a kernel's output with <code>scripts/pull_kaggle_output.ps1 -Slug &lt;owner/slug&gt; -Acct &lt;1|2|3&gt;</code> (per-account <code>~/.kaggle/access_token[_acct2|_acct3]</code>), then <code>scripts/sync_drive.ps1</code> (or <code>make sync</code>) to copy <code>artifacts/</code> → <code>gdrive:mr-mt-edu-2026/</code>. The rclone binary path is overridable via the gitignored <code>scripts/rclone_path.txt</code>, falling back to <code>rclone</code> on <code>PATH</code>. The same <code>gdrive-creds</code> credentials are mounted inside Kaggle kernels (<code>_find_rclone_conf</code>).</p>
+<h4>GPU + persistence</h4>
+<p>Enable GPU and Internet in <code>kernel-metadata.*.json</code> (<code>enable_gpu</code>, <code>enable_internet</code>). <code>/kaggle/working</code> is ephemeral (12h cap, ~20GB) and only persists on a <strong>successful</strong> run — that is why every checkpoint is mirrored to Drive (<code>mr_mt.checkpointing</code>; Hub push is an optional second channel). See [TRAINING.md](TRAINING.md).</p>
+<p><strong>Pre-flight check (10 s — catches the #1 launch failure).</strong> Verify the token can actually read the gated repos a session needs before pushing a 12h kernel:</p>
+<pre><code>python scripts/kaggle/kaggle_env.py --check-access bodhan        # or indictrans2</code></pre>
+<p>Exit 0 = all probes OK. <code>BLOCKED</code> = a definite 401/403, i.e. either the token is invalid/expired (check &lt;https://huggingface.co/settings/tokens&gt; — <code>whoami</code> must succeed) or the account was never granted access (open the repo page and accept the licence — e.g. <code>ai4bharat/indictrans2-en-indic-dist-200M</code> is a gated <code>auto</code> repo that needs a one-time accept). <code>unknown</code> is inconclusive, not a failure. Kernels run the same probe at startup — before the pip install — print an <code>ACTION REQUIRED</code> block naming the repos that failed, and <strong>abort (<code>SystemExit</code>) immediately</strong> when a repo is definitely blocked or no token candidate exists; set the Secret <code>MR_MT_TOKEN_PROBE=0</code> to bypass. (Historical note: <code>coild-aikosh/Education_v2</code> was a MANUAL gate whose approval could take hours — access was denied, so it is no longer probed or used.) To verify a rotation *per Kaggle account* (Secret included — invisible locally), push the CPU-only probe kernel: <code>push_kernel.ps1 -Task probe|probe2|probe3</code> (acct1/2/3), then read <code>kaggle kernels logs &lt;slug&gt;</code> for <code>whoami=OK as &lt;user&gt;</code>.</p>
+<p><strong>Rotating the token</strong> means updating <code>HF_TOKEN</code> in *both* the local <code>.env</code> and the private <code>hf-token</code> Dataset (or the <code>HF_TOKEN</code> Kaggle Secret) for <strong>every</strong> account: a stale Kaggle Secret outranks the Dataset, though the startup probe now skips a token that fails its gated-repo checks. Confirm with the probe kernel on each account before re-launching a 12h session.</p>
+<h3>3. Dependencies — TWO environments (do not mix)</h3>
+<p><strong>Session A / C (Bodhan Gemma-4 QLoRA)</strong> — pinned to the Arushhh-proven stack. <code>transformers&gt;=5.5.2</code> is mandatory (KV-sharing + <code>mm_token_type_ids</code>); pinned <code>==5.13.1</code>:</p>
+<pre><code>pip install -r requirements.txt</code></pre>
+<p>Pins (see <code>requirements.txt</code>): <code>transformers==5.13.1</code>, <code>trl==1.6.0</code>, <code>peft==0.20.0</code>, <code>datasets==5.0.1</code>, <code>tokenizers==0.22.2</code>, plus <code>accelerate</code>, <code>bitsandbytes</code>, <code>sentencepiece</code>, <code>sacrebleu</code>, <code>huggingface_hub</code>, <code>PyYAML</code>, <code>pandas</code>, <code>matplotlib</code>, <code>tensorboard</code>.</p>
+<p><strong>Session B (IndicTrans2 en-indic-dist-200M)</strong> — separate env; IndicTransToolkit conflicts with <code>transformers&gt;=5</code>:</p>
+<pre><code>pip install "transformers&gt;=4.33.2,&lt;5" IndicTransToolkit==1.1.1 datasets sacrebleu \
+  huggingface_hub PyYAML pandas matplotlib tensorboard peft
+:: optional — only if `trust_remote_code` is blocked in your environment, install
+:: the AI4Bharat interface instead:
+::   git clone --depth 1 https://github.com/AI4Bharat/IndicTrans2 /tmp/IndicTrans2
+::   pip install /tmp/IndicTrans2/huggingface_interface</code></pre>
+<blockquote>Never install both stacks in one env — Session B's <code>&lt;5</code> pin will break Session A's Gemma-4 path and vice versa. One Kaggle script kernel per session keeps this clean.</blockquote>
+<h3>4. GPU notes (T4 vs P100)</h3>
+<table><thead><tr><th>GPU</th><th>Notes</th></tr></thead><tbody><tr><td>T4 (preferred for Session A)</td><td>T4 (Turing, sm_75) has <strong>no native bf16</strong> — bf16 is emulated and bitsandbytes 4-bit bf16 compute can error or NaN. Try bf16 first (<code>training.bf16: true</code> in <code>configs/base.yaml</code>) only if it trains stably; on any NaN/bnb dtype error flip to the fp16 path exactly like the P100 row (<code>training.bf16: false</code>, <code>training.fp16: true</code>, <code>model.bnb.compute_dtype: float16</code>). 8B QLoRA seq 1024 batch 1×16 fits with grad checkpointing</td></tr><tr><td>P100</td><td><strong>No bf16, no FlashAttention-2.</strong> If assigned a P100, flip to the fp16 path (<code>bf16: false</code>, <code>fp16: true</code>) and expect slower steps; keep seq 1024, do not raise batch</td></tr><tr><td>Either</td><td>12h/session cap — rely on save-every-100 + Hub resume, not on finishing in one go</td></tr></tbody></table>
+<p>Verify GPU before launching: <code>nvidia-smi</code> (in the run script, or via <code>kaggle kernels logs</code>) and confirm dtype flags match the card. Session B (en-indic-dist-200M, 200M params) runs fine on either card.</p>
+<h1>TRAINING</h1><blockquote>Per-session runs, resume and monitoring &mdash; source: docs/TRAINING.md</blockquote>
+<h2>TRAINING</h2>
+<p>Sessions: <strong>A</strong> = Bodhan 8B QLoRA (Acct1, primary) · <strong>B</strong> = IndicTrans2 en-indic-dist-200M LoRA (Acct2) · <strong>C</strong> = ablation/demo (Acct3). Config: <code>configs/base.yaml</code> (session configs inherit via <code>mr_mt.config.load_session_config</code> and override <code>run.name</code>, <code>output_dir</code>, <code>hub.repo_id</code>). All sessions train <code>eng_Latn-&gt;mar_Deva</code> on <code>ai4bharat/samanantar</code> (config <code>mr</code>); eval is IN22-Gen (test) + FLORES (devtest).</p>
+<h3>Session A — Bodhan 8B QLoRA (primary)</h3>
+<pre><code>make train-a
+# = PYTHONPATH=src python -m mr_mt.train_bodhan_qlora --config configs/sessionA_bodhan_qlora.yaml</code></pre>
+<ul><li>4-bit NF4, all-linear LoRA (r=32/alpha=64/dropout=0.05), lr 1e-4</li></ul>
+<p><code>cosine_with_min_lr</code>, seq 1024. Adapter → <code>&lt;output_dir&gt;/adapter</code>.</p>
+<ul><li>Hub push every 100 steps (<code>hub.strategy: all_checkpoints</code>) when <code>push_to_hub: true</code></li></ul>
+<p>with the session's <code>hub.repo_id</code>.</p>
+<h3>Session B — IndicTrans2 en-indic-dist-200M LoRA</h3>
+<p>Use the <strong>Session B env</strong> (<code>transformers&lt;5</code> + IndicTransToolkit — see <code>docs/SETUP.md</code>).</p>
+<pre><code>make train-b
+# = PYTHONPATH=src python -m mr_mt.train_indictrans2_lora --config configs/sessionB_indictrans2_lora.yaml</code></pre>
+<ul><li>Base model <code>ai4bharat/indictrans2-en-indic-dist-200M</code> (gated <code>auto</code> — accept</li></ul>
+<p>its conditions once with the <code>HF_TOKEN</code> account before running).</p>
+<ul><li><code>SEQ_2_SEQ_LM</code> LoRA on <code>q_proj,k_proj</code>; <code>attn_implementation="eager"</code>;</li></ul>
+<p><code>num_workers=0</code>; direction <code>eng_Latn-&gt;mar_Deva</code>.</p>
+<h3>Session C — ablation / demo</h3>
+<pre><code>make train-c
+# same entry point as A; override r/LR/steps in the session config for the ablation</code></pre>
+<h3>Resume (all sessions)</h3>
+<p>Resume is <strong>not</strong> automatic: both trainers (<code>train_bodhan_qlora.py</code>, <code>train_indictrans2_lora.py</code>) only resume when <code>--resume_from_checkpoint &lt;path&gt;</code> is passed explicitly (bare <code>--resume_from_checkpoint</code> with no value resumes from the latest checkpoint under <code>output_dir</code>; the default is <code>None</code> = fresh start). Optimizer, scheduler, RNG and step state are all restored (<code>save_only_model: false</code>).</p>
+<p><strong>Easy path (Kaggle):</strong> set the Kaggle Secret <code>MR_MT_RESUME=auto</code> and re-push the same kernel — the entrypoint restores the highest Drive checkpoint that has the <code>_upload_complete</code> marker (a checkpoint whose upload was cut off by the kill is skipped) and passes the flag for you.</p>
+<p><strong>Manual path:</strong></p>
+<ol><li>Checkpoints land every 100 steps under the session's <code>output_dir</code> AND are</li></ol>
+<p>streamed to Drive in the background (live mirror). After a 12h timeout, start a new session on the same account.</p>
+<ol><li>Re-attach the <code>HF_TOKEN</code> secret / datasets, reinstall the session's env, then</li></ol>
+<p>pull the latest confirmed checkpoint back onto the VM:</p>
+<pre><code>   rclone lsf --dirs-only gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints
+   rclone lsf --files-only gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints/checkpoint-600 | grep _upload_complete
+   rclone copy gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints/checkpoint-600 /kaggle/working/sessionA/checkpoint-600 --transfers 8</code></pre>
+<p>(or <code>snapshot_download</code> of the session's <code>hub.repo_id</code> if Hub push was on).</p>
+<ol><li>Re-launch with the flag pointing at the pulled dir, e.g.</li></ol>
+<p><code>PYTHONPATH=src python -m mr_mt.train_bodhan_qlora --config configs/sessionA_bodhan_qlora.yaml --resume_from_checkpoint /kaggle/working/sessionA/checkpoint-600</code> (or <code>bash scripts/run_train_sessionA.sh --resume_from_checkpoint &lt;dir&gt;</code> — the launcher forwards <code>"$@"</code>). <code>reports/experiments.csv</code> gets a continuation row via <code>mr_mt.utils.log_experiment</code> (do not overwrite the prior row).</p>
+<blockquote>Cross-session resume works through the Drive mirror by default (rclone). The Hub is an optional second channel requiring ALL of: <code>hub.push_to_hub: true</code> AND a real <code>hub.repo_id</code> in the session config (the shipped configs have <code>push_to_hub: false</code> and a placeholder <code>"your-hf-user/..."</code> repo_id) AND a <strong>write-role</strong> <code>HF_TOKEN</code> (read role suffices for downloads only — see <code>docs/SETUP.md</code>). If rclone is missing on the VM, the callback prints a loud <code>!!! CHECKPOINTS ARE NOT LEAVING THE VM !!!</code> warning at the first save — treat that as fatal and fix the gdrive-creds dataset before continuing. <code>checkpointing.adapter_only_copy: true</code> mirrors are NOT resumable (no optimizer/scheduler/RNG) — eval-only artifacts.</blockquote>
+<h3>Checkpoint cadence</h3>
+<ul><li><code>save_steps: 100</code>, <code>eval_steps: 100</code>, <code>logging_steps: 10</code> (<code>configs/base.yaml</code>).</li><li>Never increase <code>save_steps</code> past 100 on Kaggle: a 12h kill must cost ≤ 1 interval.</li><li><code>save_total_limit: null</code> keeps every checkpoint on Drive; the callback prunes</li></ul>
+<p><strong>local</strong> copies beyond the newest <code>checkpointing.keep_local</code> (default 2) once their upload is confirmed, so <code>/kaggle/working</code> stays under its ~20GB quota. Prune Drive copies only after <code>metrics.json</code> is written.</p>
+<h3>Checkpoint persistence (keep every checkpoint)</h3>
+<p><code>/kaggle/working</code> is ephemeral and only saved on a successful run, so checkpoints must be copied off the VM:</p>
+<ol><li><strong>Live Drive mirror (active, background):</strong> each account has a private</li></ol>
+<p><code>gdrive-creds</code> Dataset with <code>rclone.conf</code>; <code>kaggle_env.activate()</code> installs the rclone binary and points <code>RCLONE_CONFIG</code> at it. <code>checkpointing.rclone_remote</code> in the session configs (e.g. <code>gdrive:mr-mt-edu-2026/bodhan-qlora/checkpoints</code>) makes <code>CheckpointMirrorCallback</code> rclone each <code>checkpoint-&lt;step&gt;</code> to Drive as it is saved — in the background (<code>Popen</code>, capped at <code>max_pending</code> concurrent, all uploads awaited at <code>on_train_end</code>), so training never stalls on network I/O. A <code>_upload_complete</code> marker is touched in the remote dir after each verified upload; always resume from a checkpoint that has the marker. Default <code>adapter_only_copy: false</code> keeps <strong>full</strong> (resumeable) checkpoints; set <code>true</code> for small adapter-only (non-resumable) copies.</p>
+<ol><li><strong>Post-run Drive sync (fallback/backfill):</strong> <code>scripts/pull_kaggle_output.ps1</code></li></ol>
+<p>→ <code>scripts/sync_drive.ps1</code> copies the whole run tree to <code>gdrive:mr-mt-edu-2026/&lt;run&gt;/</code>.</p>
+<ol><li><strong>HF Hub (optional, off by default):</strong> set <code>hub.push_to_hub: true</code> + a real</li></ol>
+<p><code>hub.repo_id</code> + a <strong>write-role</strong> token; <code>hub.strategy: all_checkpoints</code> streams every checkpoint for cross-session resume.</p>
+<blockquote>Verified locally: the mirror callback uploads a checkpoint to <code>gdrive:mr-mt-edu-2026/.../checkpoint-&lt;step&gt;</code>.</blockquote>
+<h3>What to monitor</h3>
+<ul><li><strong>TensorBoard</strong> (<code>training.logging_dir</code>, synced per session to Drive): train loss trend,</li></ul>
+<p>eval loss at each 100-step gate, LR schedule decay toward the min-LR floor.</p>
+<ul><li><strong><code>reports/experiments.csv</code></strong>: one row per (re)launch — run name, config hash, steps,</li></ul>
+<p>final loss, Hub/Drive pointers.</p>
+<ul><li><strong>Sanity gates before trusting loss</strong> ("loss drops but inference unchanged" — see</li></ul>
+<p><code>APPROACH.md</code> §6): (a) greedy-decode a known train sample — output must be near-verbatim; (b) <strong>nonce overfit</strong>: train a few steps on a fake proper-noun pair, confirm the nonce sticks, then restore. If either fails, stop — the loss is masking/output-shift, not learning.</p>
+<ul><li>Watch for: loss NaN/spike (P100 fp16 → lower LR), eval loss diverging from train</li></ul>
+<p>(overfit on 8k — raise dropout / cut steps), Hub push failures (session has no Internet).</p>
+<h3>Drive / Kaggle pull flow</h3>
+<pre><code>kaggle kernels output  -&gt;  artifacts/  -&gt;  scripts/sync_drive.ps1 (rclone)  -&gt;  gdrive:mr-mt-edu-2026/</code></pre>
+<ol><li>Pull the finished kernel's <code>/kaggle/working</code> output into local staging</li></ol>
+<p>(gitignored) from the repo root:</p>
+<pre><code>   powershell -ExecutionPolicy Bypass -File scripts/pull_kaggle_output.ps1 -Slug &lt;owner/slug&gt; -Acct &lt;1|2|3&gt;</code></pre>
+<p>Downloads into <code>D:\Assignment\marathi-mt-bodhan\artifacts</code> (override with <code>-OutDir</code>).</p>
+<ol><li>Sync staging to Drive:</li></ol>
+<pre><code>   powershell -ExecutionPolicy Bypass -File scripts/sync_drive.ps1 [-DryRun]</code></pre>
+<p>(<code>make sync</code> does the same.) It runs <code>rclone copy artifacts/ -&gt; gdrive:mr-mt-edu-2026/</code>; the rclone binary path is overridable via <code>scripts/rclone_path.txt</code>. <code>sync_drive.ps1</code> only uploads local files — it does NOT download from Kaggle.</p>
+<ol><li>Pulling back: download the session folder, place checkpoints under <code>models/</code> (gitignored)</li></ol>
+<p>or point <code>--adapter</code> at the Hub repo, then <code>make eval</code> / <code>make figures</code>.</p>
+<h1>LEAKAGE_CHECKLIST</h1><blockquote>Decontamination checklist &mdash; source: reports/LEAKAGE_CHECKLIST.md</blockquote>
+<h2>LEAKAGE CHECKLIST — train/test decontamination</h2>
+<blockquote><strong>Status: pending</strong> — populate after the first successful train/eval cycle. The prepare.py decontamination gate (exact + normalized fuzzy overlap vs IN22-Gen/FLORES) must print zero leakage before training launches.</blockquote>
+<p>Eval sets (<code>ai4bharat/IN22-Gen</code>, <code>facebook/flores</code> devtest) are <strong>held out, never trained on</strong>. Every gate below must Pass before <code>make eval</code> numbers are reported. Tooling: <code>src/mr_mt/data/decontaminate.py</code> (<code>pair_hash</code>, <code>dedup_against</code>, <code>near_dup_filter</code>, <code>normalize</code>).</p>
+<blockquote>TODO(results): fill Result + Artifact per row after <code>make data</code> / <code>make eval</code>.</blockquote>
+<table><thead><tr><th>ID</th><th>Gate</th><th>Pass criterion</th><th>Result</th><th>Artifact</th></tr></thead><tbody><tr><td>L1</td><td>Test pair-hashes vs train</td><td>0 exact <code>(src,tgt)</code> hash matches between train and IN22-Gen/FLORES</td><td>TODO</td><td><code>reports/decontam_l1.json</code></td></tr><tr><td>L2</td><td>FLORES exact match</td><td>0 FLORES devtest pairs verbatim in train</td><td>TODO</td><td><code>reports/decontam_l2.json</code></td></tr><tr><td>L3</td><td>IN22-Gen exact match</td><td>0 IN22-Gen pairs verbatim in train</td><td>TODO</td><td><code>reports/decontam_l3.json</code></td></tr><tr><td>L4</td><td>FLORES src-only near-dup</td><td>0 train rows with src similarity &gt; 0.9 to any FLORES src</td><td>TODO</td><td><code>reports/decontam_l4.json</code></td></tr><tr><td>L5</td><td>IN22-Gen src-only near-dup</td><td>0 train rows with src similarity &gt; 0.9 to any IN22-Gen src</td><td>TODO</td><td><code>reports/decontam_l5.json</code></td></tr><tr><td>L6</td><td>Length filters</td><td>All train rows within <code>min_words</code> 1 – <code>max_words</code> 100 (<code>configs/base.yaml</code>)</td><td>TODO</td><td><code>data/processed/</code> build log</td></tr><tr><td>L7</td><td>Date/domain provenance</td><td>Train slice is <code>Education_v2</code> HIN–MAR (education-domain); rationale recorded in <code>APPROACH.md</code> §4 (not BPCC/Samanantar)</td><td>TODO</td><td><code>APPROACH.md</code> §4</td></tr><tr><td>L8</td><td>No test in train dir</td><td><code>data/processed/train.jsonl</code> contains no rows sourced from eval downloads; raw eval sets live outside train raw dir</td><td>TODO</td><td><code>data/raw/</code> listing</td></tr><tr><td>L9</td><td>Normalize-before-score</td><td>Scoring ran on normalized text (<code>normalize(text, lang)</code>); raw + normalized refs archived</td><td>TODO</td><td><code>reports/predictions/*.refs.txt</code></td></tr><tr><td>L10</td><td>Repro manifest</td><td><code>make data</code> seed (42), dataset revisions, and removed-row counts (<code>dedup_against</code> / <code>near_dup_filter</code> tallies) recorded</td><td>TODO</td><td><code>reports/experiments.csv</code> + build log</td></tr></tbody></table>
+
+<h1>Engineering log: the four failures that shaped this repo</h1>
+<p>The brief scores effort, judgement and problem-solving rather than metrics,
+so the debugging trail is documented here instead of hidden in commit history.
+Each failure was diagnosed to its root cause, fixed in the code (not worked
+around), and re-run end-to-end on Kaggle.</p>
+<ul>
+<li><b>QLoRA OOM at 10.5 GiB.</b> PEFT's stock
+<code>prepare_model_for_kbit_training</code> upcasts every low-precision
+tensor to FP32, including Gemma's multi-gigabyte embedding table, which
+attempted a 10.5 GiB allocation on a 16 GiB T4 before step 1. Replaced with an
+architecture-aware local helper that upcasts only 1-D norm vectors and keeps
+large matrices in the compute dtype.</li>
+<li><b>assistant-only loss RuntimeError.</b> TRL aborts when a row has no
+assistant mask because the gated chat template emits no generation markers.
+Disabled assistant-only loss for these runs, and recorded the semantic
+trade-off (full-sequence loss) rather than silently dropping it.</li>
+<li><b>GradScaler / BF16 mismatch.</b> On a T4,
+<code>torch.cuda.is_bf16_supported()</code> returns True through sm75
+emulation, so the model loaded in BF16 while the trainer ran the FP16 scaler,
+crashing on the first gradient unscale with
+<code>NotImplementedError: _amp_foreach_non_finite_check_and_unscale_cuda not
+implemented for 'BFloat16'</code>. Fixed by letting the explicit
+<code>training.fp16/bf16</code> flags override the GPU capability probe
+instead of trusting it.</li>
+<li><b>FP16 master weights.</b> Forcing FP16 was not sufficient either:
+the AMP contract requires FP32 master weights with autocast performing the
+casting, so the next run failed with <code>ValueError: Attempting to unscale
+FP16 gradients</code>. Trainable LoRA parameters are now upcast to FP32
+<em>after</em> the adapters are constructed (they are created inside
+<code>SFTTrainer.__init__</code>, so aligning earlier would have missed all
+100,999,168 of them), while the frozen 4-bit base stays low-precision to keep
+memory in budget.</li>
+</ul>
+<p>All three sessions now complete, with a full resumable checkpoint saved and
+mirrored to Drive every 5 optimizer steps, each upload confirmed by an
+<code>_upload_complete</code> marker before local copies are pruned.</p>
+
+</body></html>
