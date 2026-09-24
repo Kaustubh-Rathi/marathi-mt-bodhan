@@ -16,9 +16,12 @@ training:
   gradient_accumulation_steps: 16
   learning_rate: 1.0e-4
   max_steps: 1000
-  save_steps: 100
-  eval_steps: 100
+  save_steps: 20
+  eval_steps: 20
   logging_dir: /kaggle/working/sessionA/logs
+  # Temporary smoke-run gate: change max_steps to the full run only after the
+  # first optimizer step and checkpoint save are verified on Kaggle.
+  max_steps: 20
 
 hub:
   push_to_hub: false

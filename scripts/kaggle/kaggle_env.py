@@ -51,6 +51,10 @@ STACK_PINS = {
     ],
     # Session B: IndicTrans2 (conflicts with transformers>=5)
     "indictrans2": [
+        # Pin the 4.46 line: IndicTransToolkit 1.1.1 references
+        # transformers' legacy pad_without_fast_tokenizer_warning helper,
+        # which was removed/relocated in later 4.x releases.
+        "transformers==4.46.3",
         "transformers>=4.33.2,<5",
         "IndicTransToolkit==1.1.1",
         # The Kaggle image ships torchao 0.10.0. PEFT 0.20 rejects it during

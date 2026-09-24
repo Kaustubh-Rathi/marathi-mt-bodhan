@@ -36,9 +36,9 @@ training:
   lr_scheduler_kwargs: {}  # override base cosine-only min_lr_rate (meaningless for inverse_sqrt)
   warmup_steps: 150
   warmup_ratio: 0
-  max_steps: 350
-  save_steps: 50
-  eval_steps: 50
+  max_steps: 20
+  save_steps: 20
+  eval_steps: 20
   logging_steps: 10
   logging_dir: /kaggle/working/sessionB/logs
   fp16: true

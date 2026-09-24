@@ -24,6 +24,7 @@ test:
 
 # Build data/processed/{train,dev,test}.jsonl from configs/base.yaml
 data:
+	$(PYTHON) -m mr_mt.data.download --config $(BASE)
 	$(PYTHON) -m mr_mt.data.prepare --config $(BASE)
 
 # Session A (Acct1): primary Bodhan 8B QLoRA

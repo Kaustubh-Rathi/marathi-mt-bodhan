@@ -29,8 +29,7 @@ lora:
   modules_to_save: []  # lm_head/embed_tokens NOT saved: fully-trainable tied lm_head adds GBs + overfits on 8k pairs; embed_tokens is tied
 
 training:
-  # p99 data word length ~42/34; 512 covers it (was 1024 -> OOM on ~15GB GPU).
-  max_seq_length: 512
+  max_seq_length: 256
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
   learning_rate: 1.0e-4
@@ -47,8 +46,8 @@ training:
   save_only_model: false  # resumeable (adapter + optimizer + scheduler + RNG)
   eval_steps: 100
   logging_steps: 10
-  bf16: true
-  fp16: false
+  fp16: true
+  bf16: false
   gradient_checkpointing: true
   optim: paged_adamw_8bit
   weight_decay: 0.01

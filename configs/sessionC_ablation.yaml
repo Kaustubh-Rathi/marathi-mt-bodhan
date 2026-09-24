@@ -21,13 +21,13 @@ lora:
   dropout: 0.05
 
 training:
-  max_seq_length: 512  # same as Session A (512); ablation isolates r/lr/steps, not truncation
+  max_seq_length: 256
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
   learning_rate: 5.0e-5
-  max_steps: 600
-  save_steps: 100
-  eval_steps: 100
+  max_steps: 20
+  save_steps: 20
+  eval_steps: 20
   logging_dir: /kaggle/working/sessionC/logs
 
 hub:
