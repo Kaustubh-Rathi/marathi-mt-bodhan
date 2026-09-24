@@ -54,8 +54,8 @@ STACK_PINS = {
         # Pin the 4.46 line: IndicTransToolkit 1.1.1 references
         # transformers' legacy pad_without_fast_tokenizer_warning helper,
         # which was removed/relocated in later 4.x releases.
-        "transformers==4.46.3",
-        "transformers>=4.33.2,<5",
+        "transformers==4.45.2",
+        "transformers>=4.33.2,<4.46",
         "IndicTransToolkit==1.1.1",
         # The Kaggle image ships torchao 0.10.0. PEFT 0.20 rejects it during
         # mapping; 0.17.1 supports the image and still supports LoRA APIs used here.

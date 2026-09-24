@@ -29,7 +29,7 @@ lora:
   modules_to_save: []  # lm_head/embed_tokens NOT saved: fully-trainable tied lm_head adds GBs + overfits on 8k pairs; embed_tokens is tied
 
 training:
-  max_seq_length: 256
+  max_seq_length: 128
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 16
   learning_rate: 1.0e-4
