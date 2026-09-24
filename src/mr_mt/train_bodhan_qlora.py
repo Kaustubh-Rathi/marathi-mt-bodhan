@@ -381,32 +381,53 @@ def prepare_model_for_qlora(model, use_gradient_checkpointing: bool = True):
 
 
 def align_dtypes_for_trainer(model, fp16: bool, bf16: bool) -> None:
-    """Force non-quantized params to the trainer's mixed-precision dtype.
+    """Make trainable params obey the AMP contract of the active trainer mode.
 
-    The fp16 GradScaler's CUDA ``unscale_`` kernel does not accept bf16
-    tensors, so a stray bf16 parameter (e.g. LoRA adapters created after
-    load, or a checkpoint whose ``torch_dtype`` is bf16) crashes at the first
-    optimizer step. Cast bf16 <-> fp16 to match the active trainer mode.
-    Params4bit are skipped: their storage is packed and already uses the
-    bnb_4bit_compute_dtype set at load time. FP32 norm vectors are left
-    alone (GradScaler handles fp32 fine).
+    The fp16 GradScaler may only unscale **FP32** gradients: under
+    ``fp16=True`` the Trainer keeps FP32 master weights and relies on
+    autocast to run ops in fp16. Loading QLoRA in a low precision therefore
+    breaks the first optimizer step twice over, in both directions:
+
+    * pure bf16 params -> ``NotImplementedError: "_amp_foreach_non_finite_
+      check_and_unscale_cuda" not implemented for 'BFloat16'`` (no bf16
+      kernel in the scaler);
+    * pure fp16 params -> ``ValueError: Attempting to unscale FP16
+      gradients.`` (scaler refuses to rescale an already-low-precision
+      grad).
+
+    So: with fp16, cast the TRAINABLE (LoRA) params to FP32 and leave the
+    frozen 4-bit base in its bnb compute dtype — the standard QLoRA recipe.
+    With bf16 the scaler is inactive, so only cross-precision cleanup is
+    needed. ``Params4bit`` is skipped (packed storage); frozen fp32 norm
+    vectors are left alone.
     """
-    if bf16 and not fp16:
-        target, source = torch.bfloat16, torch.float16
-    elif fp16 and not bf16:
-        target, source = torch.float16, torch.bfloat16
-    else:
+    if fp16 and not bf16:
+        changed = 0
+        for param in model.parameters():
+            if (
+                param.requires_grad
+                and param.dtype != torch.float32
+                and param.__class__.__name__ != "Params4bit"
+            ):
+                param.data = param.data.to(torch.float32)
+                changed += 1
+        if changed:
+            print(
+                f"[dtype] upcast {changed} trainable param(s) to fp32 master "
+                "weights (required by the fp16 GradScaler)"
+            )
         return
-    moved = 0
-    for param in model.parameters():
-        if param.dtype == source and param.__class__.__name__ != "Params4bit":
-            param.data = param.data.to(target)
-            moved += 1
-    if moved:
-        print(
-            f"[dtype] aligned {moved} parameter(s) {source} -> {target} "
-            "to match trainer mixed precision"
-        )
+    if bf16 and not fp16:
+        moved = 0
+        for param in model.parameters():
+            if param.dtype == torch.float16 and param.__class__.__name__ != "Params4bit":
+                param.data = param.data.to(torch.bfloat16)
+                moved += 1
+        if moved:
+            print(
+                f"[dtype] aligned {moved} parameter(s) fp16 -> bf16 to match "
+                "trainer mixed precision"
+            )
 
 # ---------------------------------------------------------------------------
 # LoRA config

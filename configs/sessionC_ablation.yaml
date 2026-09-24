@@ -30,6 +30,9 @@ training:
   eval_steps: 5
   logging_steps: 1
   logging_dir: /kaggle/working/sessionC/logs
+  # Same constraint as Session A (base.yaml defaults this to true): the gated
+  # Gemma template renders no assistant mask, so TRL rejects the first batch.
+  assistant_only_loss: false
 
 hub:
   push_to_hub: false
