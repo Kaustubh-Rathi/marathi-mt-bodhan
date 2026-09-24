@@ -1,0 +1,26 @@
+{
+  "in22_gen": {
+    "dataset": "ai4bharat/IN22-Gen",
+    "config": null,
+    "split": "test",
+    "n": 1024,
+    "bleu": 7.805452561854553,
+    "chrf": 24.03933154176645,
+    "chrf++": 22.661473908372727,
+    "bleu_signature": "BLEU = 7.81 27.9/9.8/5.0/2.7 (BP = 1.000 ratio = 1.024 hyp_len = 27498 ref_len = 26843)",
+    "chrf_signature": "chrF2++ = 22.66",
+    "tgt_lang": "mar_Deva"
+  },
+  "flores_devtest": {
+    "dataset": "facebook/flores",
+    "config": "eng_Latn-mar_Deva",
+    "split": "devtest",
+    "n": 1012,
+    "bleu": 9.644056667167662,
+    "chrf": 28.60851533370648,
+    "chrf++": 26.809476208426496,
+    "bleu_signature": "BLEU = 9.64 30.1/12.3/6.5/3.6 (BP = 1.000 ratio = 1.049 hyp_len = 22882 ref_len = 21810)",
+    "chrf_signature": "chrF2++ = 26.81",
+    "tgt_lang": "mar_Deva"
+  }
+}

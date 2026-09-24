@@ -1,2 +1,3 @@
 run_id,account,session,base_model,method,r,alpha,lr,seq,batch,accum,steps,dev_chrf,dev_bleu,status,git_sha,data_hash,gpu,wall_hours,adapter_link,notes
 sessionA_bodhan_qlora,,sessionA_bodhan_qlora,bodhan-ai/indic-translate,qlora,32,64,0.0001,128,1,16,20,,,completed,,,Tesla T4,0.268,your-hf-user/indic-translate-mr-education-lora,config=configs/sessionA_bodhan_qlora.yaml
+eval-bodhan-20260924-135207,,eval,bodhan-ai/indic-translate,eval-bodhan,,,,,,,,24.03933154176645,7.805452561854553,done,,,,,/kaggle/working/sessionA/adapter,"split_arg=test benchmarks=in22_gen,flores_devtest"

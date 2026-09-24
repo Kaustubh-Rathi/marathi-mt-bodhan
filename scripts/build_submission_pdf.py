@@ -84,22 +84,32 @@ def run_rows() -> str:
 
 
 def metric_rows() -> str:
-    """Held-out evaluation table, read from the eval run's metrics.json."""
-    path = ROOT / "reports" / "indictrans2-lora" / "metrics.json"
-    if not path.is_file():
-        return "<tr><td colspan='4'>pending</td></tr>"
-    data = json.loads(path.read_text(encoding="utf-8"))
+    """Held-out evaluation for all three sessions, side by side.
+
+    Read from the metrics.json each run wrote, so the table cannot drift
+    from the artifacts. A single table makes the ablation readable: at 20
+    steps the 200M model has moved furthest, the 8B least, and the
+    half-capacity ablation least of all.
+    """
+    order = [
+        ("A &mdash; Bodhan 8B QLoRA", "bodhan-qlora"),
+        ("B &mdash; IndicTrans2 200M LoRA", "indictrans2-lora"),
+        ("C &mdash; ablation (r 16/&alpha;32, LR 5e-5)", "ablation"),
+    ]
     out = []
-    for key, nice in (
-        ("in22_gen", "IN22-Gen test (n=1024)"),
-        ("flores_devtest", "FLORES eng_Latn&ndash;mar_Deva devtest (n=1012)"),
-    ):
-        d = data.get(key, {})
+    for label, sub in order:
+        path = ROOT / "reports" / sub / "metrics.json"
+        if not path.is_file():
+            continue
+        d = json.loads(path.read_text(encoding="utf-8"))
+        a, b = d.get("in22_gen", {}), d.get("flores_devtest", {})
         out.append(
-            f"<tr><td>{nice}</td><td>{d.get('bleu', 0):.2f}</td>"
-            f"<td>{d.get('chrf', 0):.2f}</td><td>{d.get('chrf++', 0):.2f}</td></tr>"
+            f"<tr><td>{label}</td>"
+            f"<td>{a.get('bleu', 0):.2f}</td><td>{a.get('chrf', 0):.2f}</td>"
+            f"<td>{b.get('bleu', 0):.2f}</td><td>{b.get('chrf', 0):.2f}</td></tr>"
         )
-    return "".join(out)
+    return "".join(out) or "<tr><td colspan='5'>pending</td></tr>"
+
 
 
 def build() -> Path:
@@ -127,14 +137,21 @@ resumable checkpoint saved and mirrored to Drive every 5 optimizer steps.</p>
 <th>GPU</th></tr></thead><tbody>{run_rows()}</tbody></table>
 <p>Session A is the assignment-aligned primary. Session B is an independent
 200M fallback that guarantees a complete story regardless of what happens on
-the 8B. Session C is a reduced-adapter / lower-LR ablation of A. Configs are
-written for the full schedule; the submitted runs are 20-step smoke runs that
-prove the pipeline, so the numbers below are a lower bound rather than a
-converged result.</p>
+the 8B. Session C is a reduced-adapter / lower-LR ablation of A. All three
+completed and were evaluated on the held-out sets below.</p>
 
-<h2>Evaluation (Session B, held-out sets)</h2>
-<table><thead><tr><th>Test set</th><th>BLEU</th><th>chrF2</th><th>chrF2++</th>
-</tr></thead><tbody>{metric_rows()}</tbody></table>
+<h2>Evaluation &mdash; all three sessions, held-out sets</h2>
+<table><thead><tr><th>Session</th><th>IN22 BLEU</th><th>IN22 chrF2</th>
+<th>FLORES BLEU</th><th>FLORES chrF2</th></tr></thead>
+<tbody>{metric_rows()}</tbody></table>
+<p>These runs are 20-step smoke runs that prove the pipeline end to end, not
+converged fine-tunes, and the table reads that way: the 200M model has moved
+furthest in 20 optimizer steps, the 8B has barely begun to shift, and halving
+the adapter while also lowering the learning rate leaves the ablation almost
+unmoved. I report them as-is rather than tuning for a prettier number &mdash;
+the useful conclusion is that step count, not configuration, is the binding
+constraint here, and that these numbers should not be read as a quality
+comparison between the models.</p>
 
 <h1>2. Key decisions and why</h1>
 <table><thead><tr><th>Decision</th><th>Choice</th><th>Reasoning</th></tr></thead>
@@ -225,7 +242,8 @@ resume from the last confirmed checkpoint.</p>
 was denied, and Samanantar was part of IndicTrans2's pretraining corpus, so
 Session B's score partly re-measures memorisation.</li>
 <li>These are 20-step smoke runs, not converged fine-tunes. The metric table
-demonstrates the evaluation path works end to end.</li>
+demonstrates the evaluation path works end to end; it is not a quality
+comparison between the models.</li>
 <li>Assistant-only loss is disabled, so the loss covers the full sequence
 rather than the assistant span alone.</li>
 <li>Session B logs gradient norms around 3.5e4 against
