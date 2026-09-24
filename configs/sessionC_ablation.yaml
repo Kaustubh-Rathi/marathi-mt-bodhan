@@ -26,8 +26,9 @@ training:
   gradient_accumulation_steps: 16
   learning_rate: 5.0e-5
   max_steps: 20
-  save_steps: 20
-  eval_steps: 20
+  save_steps: 5
+  eval_steps: 5
+  logging_steps: 1
   logging_dir: /kaggle/working/sessionC/logs
 
 hub:

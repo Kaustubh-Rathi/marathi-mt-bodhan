@@ -293,14 +293,24 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
     last_exc: Optional[Exception] = None
     for attn_impl in ("sdpa", "eager"):
         try:
-            model = AutoModelForMultimodalLM.from_pretrained(
-                model_name,
+            # 5.13.1 renamed torch_dtype to dtype.  Supplying dtype is
+            # essential: otherwise bitsandbytes leaves Gemma's large
+            # unquantized PLE/embedding tables in BF16/FP16 before PEFT.
+            load_kwargs = dict(
                 trust_remote_code=trust_remote_code,
                 token=token,
                 quantization_config=quant_config,
-                device_map="auto",
+                device_map={"": 0} if torch.cuda.is_available() else "auto",
                 attn_implementation=attn_impl,
             )
+            try:
+                model = AutoModelForMultimodalLM.from_pretrained(
+                    model_name, dtype=compute_dtype, **load_kwargs
+                )
+            except TypeError:
+                model = AutoModelForMultimodalLM.from_pretrained(
+                    model_name, torch_dtype=compute_dtype, **load_kwargs
+                )
             break
         except Exception as exc:  # noqa: BLE001 - must try next kernel
             last_exc = exc
@@ -313,6 +323,45 @@ def load_model_and_tokenizer(cfg: dict) -> tuple:
         raise last_exc
     return model, tokenizer, processor
 
+
+
+
+def prepare_model_for_qlora(model, use_gradient_checkpointing: bool = True):
+    """Prepare a quantized Gemma model without PEFT's giant FP32 upcasts.
+
+    PEFT's stock helper converts every FP16/BF16 parameter to FP32.  Gemma
+    contains a multi-gigabyte (unquantized) embedding table; converting that
+    table creates a 10.5 GiB temporary allocation before step 1 and OOMs a
+    16 GiB T4.  Keep large matrices in the model's compute dtype, while still
+    applying the useful stability parts of PEFT preparation: freeze the base
+    parameters, upcast only normalization vectors, and disable KV caching.
+
+    This is intentionally local rather than a dependency pin.  It works with
+    the existing bitsandbytes/PEFT stack and makes the memory boundary
+    explicit.  Gradient checkpointing is enabled non-reentrantly by the
+    trainer; that mode does not need the input-gradient hook.
+    """
+    for param in model.parameters():
+        param.requires_grad_(False)
+        if (
+            param.ndim == 1
+            and param.dtype in (torch.float16, torch.bfloat16)
+            and param.__class__.__name__ != "Params4bit"
+        ):
+            # LayerNorm/RMSNorm vectors are small and benefit from FP32
+            # accumulation, unlike Gemma's enormous embedding matrices.
+            param.data = param.data.to(torch.float32)
+
+    if use_gradient_checkpointing:
+        for cfg in (
+            getattr(model, "config", None),
+            getattr(getattr(model, "config", None), "text_config", None),
+        ):
+            if cfg is not None and hasattr(cfg, "use_cache"):
+                cfg.use_cache = False
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return model
 
 # ---------------------------------------------------------------------------
 # LoRA config
@@ -640,26 +689,21 @@ def main(argv=None):
                 "train on the full sequence"
             )
 
-    # kBit training prep (skip on Unsloth-patched models). NOTE: recent PEFT
-    # dropped the `gradient_checkpointing` kwarg; enable GC separately below.
-    try:
-        from peft import prepare_model_for_kbit_training
-
-        model = prepare_model_for_kbit_training(model)
-    except Exception as exc:  # noqa: BLE001 - e.g. Unsloth already prepared
-        if "out of memory" in str(exc).lower():
-            raise RuntimeError(
-                "QLoRA preparation exhausted GPU memory; refusing to continue "
-                "with an unprepared model"
-            ) from exc
-        print(
-            f"WARNING: prepare_model_for_kbit_training skipped ({exc}).",
-            file=sys.stderr,
-        )
+    # kBit training prep.  Do NOT call PEFT's generic helper here: it converts
+    # every FP16/BF16 parameter to FP32, including Gemma's multi-GiB embedding
+    # table, which attempts a 10.5 GiB temporary allocation on a 16 GiB T4.
+    model = prepare_model_for_qlora(
+        model,
+        use_gradient_checkpointing=bool(
+            cfg["training"].get("gradient_checkpointing", True)
+        ),
+    )
     if bool(cfg["training"].get("gradient_checkpointing", True)):
         try:
             if hasattr(model, "gradient_checkpointing_enable"):
-                model.gradient_checkpointing_enable()
+                model.gradient_checkpointing_enable(
+                    gradient_checkpointing_kwargs={"use_reentrant": False}
+                )
             if hasattr(model, "config"):
                 model.config.use_cache = False
         except Exception as exc:  # noqa: BLE001 - non-fatal

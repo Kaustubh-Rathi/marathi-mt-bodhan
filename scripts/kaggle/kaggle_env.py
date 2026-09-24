@@ -51,12 +51,11 @@ STACK_PINS = {
     ],
     # Session B: IndicTrans2 (conflicts with transformers>=5)
     "indictrans2": [
-        # Pin the 4.46 line: IndicTransToolkit 1.1.1 references
-        # transformers' legacy pad_without_fast_tokenizer_warning helper,
-        # which was removed/relocated in later 4.x releases.
-        "transformers==4.45.2",
-        "transformers>=4.33.2,<4.46",
         "IndicTransToolkit==1.1.1",
+        # The toolkit has a class-body import/global lookup bug around this
+        # helper; train_indictrans2_lora patches that exact module.  Keeping a
+        # single coherent 4.45 pin avoids a range/exact-pin resolver conflict.
+        "transformers==4.45.2",
         # The Kaggle image ships torchao 0.10.0. PEFT 0.20 rejects it during
         # mapping; 0.17.1 supports the image and still supports LoRA APIs used here.
         "peft==0.17.1",

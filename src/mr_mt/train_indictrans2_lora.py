@@ -28,6 +28,37 @@ except ImportError as exc:  # pragma: no cover
         "but is not installed. Install it with: pip install indictranstoolkit"
     ) from exc
 
+
+def _patch_indic_collator_padding() -> None:
+    """Restore the Transformers 4.45 padding helper used by the toolkit.
+
+    IndicTransToolkit 1.1.x imports the helper in the class body, but Python
+    name lookup inside ``IndicDataCollator.__call__`` resolves module globals.
+    The failed import therefore raises NameError on the first batch, not at
+    trainer construction.  Injecting the public helper into the defining module
+    is narrower and safer than replacing the package's collator.
+    """
+    import importlib
+
+    collator_mod = importlib.import_module(IndicDataCollator.__module__)
+    if hasattr(collator_mod, "pad_without_fast_tokenizer_warning"):
+        return
+    try:
+        from transformers.data.data_collator import (
+            pad_without_fast_tokenizer_warning as pad_features,
+        )
+    except ImportError:
+        from transformers.data.data_collator import DataCollatorForSeq2Seq
+
+        def pad_features(tokenizer, features, **kwargs):
+            return DataCollatorForSeq2Seq(tokenizer=tokenizer, **kwargs)(features)
+
+    setattr(collator_mod, "pad_without_fast_tokenizer_warning", pad_features)
+    print("[compat] patched IndicDataCollator padding helper")
+
+
+_patch_indic_collator_padding()
+
 from datasets import Dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (

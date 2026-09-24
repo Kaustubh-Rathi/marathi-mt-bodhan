@@ -16,8 +16,11 @@ training:
   gradient_accumulation_steps: 16
   learning_rate: 1.0e-4
   max_steps: 1000
-  save_steps: 20
-  eval_steps: 20
+  # Checkpoint after every 5 optimizer steps.  This deliberately happens
+  # before the long run so a new Kaggle VM can prove step-1 and resume.
+  save_steps: 5
+  eval_steps: 5
+  logging_steps: 1
   logging_dir: /kaggle/working/sessionA/logs
   # Temporary smoke-run gate: change max_steps to the full run only after the
   # first optimizer step and checkpoint save are verified on Kaggle.

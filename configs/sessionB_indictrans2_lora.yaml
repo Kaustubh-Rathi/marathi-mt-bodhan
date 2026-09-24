@@ -37,9 +37,9 @@ training:
   warmup_steps: 150
   warmup_ratio: 0
   max_steps: 20
-  save_steps: 20
-  eval_steps: 20
-  logging_steps: 10
+  save_steps: 5
+  eval_steps: 5
+  logging_steps: 1
   logging_dir: /kaggle/working/sessionB/logs
   fp16: true
   bf16: false
