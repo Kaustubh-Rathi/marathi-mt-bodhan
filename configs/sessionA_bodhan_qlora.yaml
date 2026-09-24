@@ -22,6 +22,11 @@ training:
   eval_steps: 5
   logging_steps: 1
   logging_dir: /kaggle/working/sessionA/logs
+  # TRL 1.6 rejects a row whose gated Gemma template renders an empty
+  # assistant mask, even though generation markers are present in the
+  # template. Train the full conversation until the tokenizer's template is
+  # corrected; this avoids another 30-minute pre-tokenization failure.
+  assistant_only_loss: false
   # Temporary smoke-run gate: change max_steps to the full run only after the
   # first optimizer step and checkpoint save are verified on Kaggle.
   max_steps: 20
